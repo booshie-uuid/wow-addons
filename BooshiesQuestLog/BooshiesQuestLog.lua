@@ -2,17 +2,21 @@ local ADDON_NAME = ...
 
 BooshiesQuestLogDB = BooshiesQuestLogDB or {}
 
-local _errSeen = {}
+local observedErrors = {}
 local function safeCall(label, fn, ...)
+
     local ok, err = pcall(fn, ...)
+    
     if not ok and err then
         local msg = tostring(err)
-        if not _errSeen[msg] then
-            _errSeen[msg] = true
+        if not observedErrors[msg] then
+            observedErrors[msg] = true
             print(("|cffff6666BQL error [%s]:|r %s"):format(label or "?", msg))
         end
     end
+
     return ok
+
 end
 
 -- Entries lacking progress info still count toward the denominator so the
