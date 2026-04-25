@@ -1500,6 +1500,37 @@ local function ReleaseSection(hdr)
     table.insert(sectionPool, hdr)
 end
 
+local function RenderSection(spec)
+
+    if not spec.items or #spec.items == 0 then return end
+
+    local hdr = AcquireSection()
+    hdr.classification = spec.classification
+    hdr.title:SetText(spec.title)
+    hdr.title:SetTextColor(unpack(UI_COLORS.sectionTitle))
+
+    local collapsed = (BooshiesQuestLogDB.collapsedSections or {})[spec.classification] and true or false
+
+    hdr.count:SetText(#spec.items)
+    hdr.arrow:SetTexture(collapsed and UI_TEXTURES.plusButton or UI_TEXTURES.minusButton)
+    hdr:SetHeight(SECTION_HEIGHT)
+
+    table.insert(activeSections, hdr)
+    table.insert(spec.layout, hdr)
+
+    if collapsed then return end
+
+    for _, item in ipairs(spec.items) do
+        local row = spec.populateRow(item)
+        if row then
+            row:SetHeight(ROW_HEIGHT)
+            table.insert(activeRows, row)
+            table.insert(spec.layout, row)
+        end
+    end
+
+end
+
 local refreshImpl = function()
     if not frame then return end
     if not BooshiesQuestLogDB.enabled then frame:Hide(); return end
@@ -1568,194 +1599,146 @@ local refreshImpl = function()
 
     local layout = {}
     local superTracked = C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID and C_SuperTrack.GetSuperTrackedQuestID() or 0
-    local collapsedMap = BooshiesQuestLogDB.collapsedSections or {}
 
     for _, cls in ipairs(CLASSIFICATION_ORDER) do
-        local list = groups[cls]
-        if list and #list > 0 then
-            local hdr = AcquireSection()
-            hdr.classification = cls
-            hdr.title:SetText(CLASSIFICATION_NAMES[cls] or ("Class " .. cls))
-            hdr.title:SetTextColor(unpack(UI_COLORS.sectionTitle))
-            local collapsed = collapsedMap[cls] and true or false
-            hdr.count:SetText(#list)
-            hdr.arrow:SetTexture(collapsed and UI_TEXTURES.plusButton or UI_TEXTURES.minusButton)
-            hdr:SetHeight(SECTION_HEIGHT)
-            table.insert(activeSections, hdr)
-            table.insert(layout, hdr)
+        RenderSection({
+            classification = cls,
+            title          = CLASSIFICATION_NAMES[cls] or ("Class " .. cls),
+            items          = groups[cls],
+            layout         = layout,
+            populateRow    = function(q)
 
-            if not collapsed then
-                for _, q in ipairs(list) do
-                    local row = AcquireRow()
-                    row.itemKind = "quest"
-                    row.questID = q.questID
-                    row.achievementID = nil
-                    row.title:SetText(q.title)
-                    row.title:SetTextColor(unpack(UI_COLORS.itemTitle))
-                    if row.SetComplete then row:SetComplete(q.isComplete) end
-                    local isSuper = superTracked == q.questID and superTracked ~= 0
-                    if row.trackCheck then
-                        row.trackCheck:Show()
-                        row.trackCheck:SetChecked(isSuper)
-                    end
-                    if row.superBg then row.superBg:SetShown(isSuper) end
-                    local pct, hasObj = GetQuestProgress(q.questID)
-                    if row.SetProgress then row:SetProgress(pct, hasObj, q.isComplete) end
-                    row:SetHeight(ROW_HEIGHT)
-                    table.insert(activeRows, row)
-                    table.insert(layout, row)
+                local row = AcquireRow()
+                row.itemKind = "quest"
+                row.questID = q.questID
+                row.title:SetText(q.title)
+                row.title:SetTextColor(unpack(UI_COLORS.itemTitle))
+
+                if row.SetComplete then row:SetComplete(q.isComplete) end
+
+                local isSuper = superTracked == q.questID and superTracked ~= 0
+                if row.trackCheck then
+                    row.trackCheck:Show()
+                    row.trackCheck:SetChecked(isSuper)
                 end
-            end
-        end
+                if row.superBg then row.superBg:SetShown(isSuper) end
+
+                local pct, hasObj = GetQuestProgress(q.questID)
+                if row.SetProgress then row:SetProgress(pct, hasObj, q.isComplete) end
+
+                return row
+
+            end,
+        })
     end
 
     local hideAchievements = BooshiesQuestLogDB.filterByZone and not BooshiesQuestLogDB.alwaysShowAchievements
-    local trackedAch = hideAchievements and {} or GetTrackedAchievementList()
-    if #trackedAch > 0 then
-        local hdr = AcquireSection()
-        hdr.classification = "achievements"
-        hdr.title:SetText("Achievements")
-        hdr.title:SetTextColor(unpack(UI_COLORS.sectionTitle))
-        local collapsed = collapsedMap["achievements"] and true or false
-        hdr.count:SetText(#trackedAch)
-        hdr.arrow:SetTexture(collapsed and UI_TEXTURES.plusButton or UI_TEXTURES.minusButton)
-        hdr:SetHeight(SECTION_HEIGHT)
-        table.insert(activeSections, hdr)
-        table.insert(layout, hdr)
+    RenderSection({
+        classification = "achievements",
+        title          = "Achievements",
+        items          = hideAchievements and {} or GetTrackedAchievementList(),
+        layout         = layout,
+        populateRow    = function(achID)
 
-        if not collapsed then
-            for _, achID in ipairs(trackedAch) do
-                local id, name, _, completed
-                if GetAchievementInfo then
-                    id, name, _, completed = GetAchievementInfo(achID)
-                end
-                if id then
-                    local row = AcquireRow()
-                    row.itemKind = "achievement"
-                    row.achievementID = achID
-                    row.questID = nil
-                    row.title:SetText(name or ("Achievement " .. achID))
-                    row.title:SetTextColor(unpack(UI_COLORS.itemTitle))
-                    if row.SetComplete then row:SetComplete(completed) end
-                    if row.trackCheck then row.trackCheck:Hide() end
-                    local pct, hasAny = GetAchievementProgress(achID)
-                    if row.SetProgress then row:SetProgress(pct, hasAny, completed) end
-                    row:SetHeight(ROW_HEIGHT)
-                    table.insert(activeRows, row)
-                    table.insert(layout, row)
-                end
+            local id, name, _, completed
+            if GetAchievementInfo then
+                id, name, _, completed = GetAchievementInfo(achID)
             end
-        end
-    end
+            if not id then return nil end
 
-    local trackedRecipes = BooshiesQuestLogDB.filterByZone and {} or GetTrackedRecipeList()
-    if #trackedRecipes > 0 then
-        local hdr = AcquireSection()
-        hdr.classification = "recipes"
-        hdr.title:SetText("Crafting")
-        hdr.title:SetTextColor(unpack(UI_COLORS.sectionTitle))
-        local collapsed = collapsedMap["recipes"] and true or false
-        hdr.count:SetText(#trackedRecipes)
-        hdr.arrow:SetTexture(collapsed and UI_TEXTURES.plusButton or UI_TEXTURES.minusButton)
-        hdr:SetHeight(SECTION_HEIGHT)
-        table.insert(activeSections, hdr)
-        table.insert(layout, hdr)
+            local row = AcquireRow()
+            row.itemKind = "achievement"
+            row.achievementID = achID
+            row.title:SetText(name or ("Achievement " .. achID))
+            row.title:SetTextColor(unpack(UI_COLORS.itemTitle))
 
-        if not collapsed then
-            for _, recipeID in ipairs(trackedRecipes) do
-                local row = AcquireRow()
-                row.itemKind = "recipe"
-                row.recipeID = recipeID
-                row.questID = nil
-                row.achievementID = nil
-                row.activityID = nil
-                row.title:SetText(GetRecipeName(recipeID))
-                row.title:SetTextColor(unpack(UI_COLORS.itemTitle))
-                if row.SetComplete then row:SetComplete(false) end
-                if row.trackCheck then row.trackCheck:Hide() end
-                local pct, hasAny = GetRecipeProgress(recipeID)
-                if row.SetProgress then row:SetProgress(pct, hasAny, false) end
-                row:SetHeight(ROW_HEIGHT)
-                table.insert(activeRows, row)
-                table.insert(layout, row)
-            end
-        end
-    end
+            if row.SetComplete then row:SetComplete(completed) end
+            if row.trackCheck then row.trackCheck:Hide() end
 
-    local trackedActivities = BooshiesQuestLogDB.filterByZone and {} or GetTrackedMonthlyActivities()
-    if #trackedActivities > 0 then
-        local hdr = AcquireSection()
-        hdr.classification = "activities"
-        hdr.title:SetText("Monthly")
-        hdr.title:SetTextColor(unpack(UI_COLORS.sectionTitle))
-        local collapsed = collapsedMap["activities"] and true or false
-        hdr.count:SetText(#trackedActivities)
-        hdr.arrow:SetTexture(collapsed and UI_TEXTURES.plusButton or UI_TEXTURES.minusButton)
-        hdr:SetHeight(SECTION_HEIGHT)
-        table.insert(activeSections, hdr)
-        table.insert(layout, hdr)
+            local pct, hasAny = GetAchievementProgress(achID)
+            if row.SetProgress then row:SetProgress(pct, hasAny, completed) end
 
-        if not collapsed then
-            for _, actID in ipairs(trackedActivities) do
-                local info = GetActivityInfo(actID)
-                if info then
-                    local row = AcquireRow()
-                    row.itemKind = "activity"
-                    row.activityID = actID
-                    row.questID = nil
-                    row.achievementID = nil
-                    row.recipeID = nil
-                    row.initiativeID = nil
-                    local name = info.activityName or info.name or ("Activity " .. actID)
-                    row.title:SetText(name)
-                    row.title:SetTextColor(unpack(UI_COLORS.itemTitle))
-                    if row.SetComplete then row:SetComplete(info.completed) end
-                    if row.trackCheck then row.trackCheck:Hide() end
-                    local pct, hasAny = GetActivityProgress(actID)
-                    if row.SetProgress then row:SetProgress(pct, hasAny, info.completed) end
-                    row:SetHeight(ROW_HEIGHT)
-                    table.insert(activeRows, row)
-                    table.insert(layout, row)
-                end
-            end
-        end
-    end
+            return row
 
-    local trackedInitiatives = BooshiesQuestLogDB.filterByZone and {} or GetTrackedInitiativeTasks()
-    if #trackedInitiatives > 0 then
-        local hdr = AcquireSection()
-        hdr.classification = "initiatives"
-        hdr.title:SetText("Endeavours")
-        hdr.title:SetTextColor(unpack(UI_COLORS.sectionTitle))
-        local collapsed = collapsedMap["initiatives"] and true or false
-        hdr.count:SetText(#trackedInitiatives)
-        hdr.arrow:SetTexture(collapsed and UI_TEXTURES.plusButton or UI_TEXTURES.minusButton)
-        hdr:SetHeight(SECTION_HEIGHT)
-        table.insert(activeSections, hdr)
-        table.insert(layout, hdr)
+        end,
+    })
 
-        if not collapsed then
-            for _, taskID in ipairs(trackedInitiatives) do
-                local row = AcquireRow()
-                row.itemKind = "initiative"
-                row.initiativeID = taskID
-                row.questID = nil
-                row.achievementID = nil
-                row.recipeID = nil
-                row.activityID = nil
-                local info = GetInitiativeTaskInfo(taskID)
-                row.title:SetText(GetInitiativeTaskName(taskID))
-                row.title:SetTextColor(unpack(UI_COLORS.itemTitle))
-                if row.SetComplete then row:SetComplete(info and info.completed) end
-                if row.trackCheck then row.trackCheck:Hide() end
-                local pct, hasAny = GetInitiativeTaskProgress(taskID)
-                if row.SetProgress then row:SetProgress(pct, hasAny, info and info.completed) end
-                row:SetHeight(ROW_HEIGHT)
-                table.insert(activeRows, row)
-                table.insert(layout, row)
-            end
-        end
-    end
+    RenderSection({
+        classification = "recipes",
+        title          = "Crafting",
+        items          = BooshiesQuestLogDB.filterByZone and {} or GetTrackedRecipeList(),
+        layout         = layout,
+        populateRow    = function(recipeID)
+
+            local row = AcquireRow()
+            row.itemKind = "recipe"
+            row.recipeID = recipeID
+            row.title:SetText(GetRecipeName(recipeID))
+            row.title:SetTextColor(unpack(UI_COLORS.itemTitle))
+
+            if row.SetComplete then row:SetComplete(false) end
+            if row.trackCheck then row.trackCheck:Hide() end
+
+            local pct, hasAny = GetRecipeProgress(recipeID)
+            if row.SetProgress then row:SetProgress(pct, hasAny, false) end
+
+            return row
+
+        end,
+    })
+
+    RenderSection({
+        classification = "activities",
+        title          = "Monthly",
+        items          = BooshiesQuestLogDB.filterByZone and {} or GetTrackedMonthlyActivities(),
+        layout         = layout,
+        populateRow    = function(actID)
+
+            local info = GetActivityInfo(actID)
+            if not info then return nil end
+
+            local row = AcquireRow()
+            row.itemKind = "activity"
+            row.activityID = actID
+            row.title:SetText(info.activityName or info.name or ("Activity " .. actID))
+            row.title:SetTextColor(unpack(UI_COLORS.itemTitle))
+
+            if row.SetComplete then row:SetComplete(info.completed) end
+            if row.trackCheck then row.trackCheck:Hide() end
+
+            local pct, hasAny = GetActivityProgress(actID)
+            if row.SetProgress then row:SetProgress(pct, hasAny, info.completed) end
+
+            return row
+
+        end,
+    })
+
+    RenderSection({
+        classification = "initiatives",
+        title          = "Endeavours",
+        items          = BooshiesQuestLogDB.filterByZone and {} or GetTrackedInitiativeTasks(),
+        layout         = layout,
+        populateRow    = function(taskID)
+
+            local info = GetInitiativeTaskInfo(taskID)
+
+            local row = AcquireRow()
+            row.itemKind = "initiative"
+            row.initiativeID = taskID
+            row.title:SetText(GetInitiativeTaskName(taskID))
+            row.title:SetTextColor(unpack(UI_COLORS.itemTitle))
+
+            if row.SetComplete then row:SetComplete(info and info.completed) end
+            if row.trackCheck then row.trackCheck:Hide() end
+
+            local pct, hasAny = GetInitiativeTaskProgress(taskID)
+            if row.SetProgress then row:SetProgress(pct, hasAny, info and info.completed) end
+
+            return row
+
+        end,
+    })
 
     local expandedKeys = BooshiesQuestLogDB.expandedKeys or {}
     if next(expandedKeys) then
