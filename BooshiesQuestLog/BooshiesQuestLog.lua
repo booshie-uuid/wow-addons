@@ -104,6 +104,7 @@ local DEFAULTS = {
     expandedKeys = {},
     collapsedSections = {},
     collapsed = false,
+    helpShown = false,
 }
 
 local CLASSIFICATION_NAMES = {
@@ -169,6 +170,15 @@ local UI_COLORS = {
     objectiveFinished   = { 0.55, 0.9,  0.55 },
     objectiveUnfinished = { 0.95, 0.82, 0.36 },
 }
+
+-- Converts a UI_COLORS entry (RGB 0-1 floats) into a WoW chat colour escape
+-- like "|cffRRGGBB". Use with `|r` to reset back to the FontString's default.
+local function ColorToEscape(rgb)
+    return string.format("|cff%02x%02x%02x",
+        math.floor(rgb[1] * 255 + 0.5),
+        math.floor(rgb[2] * 255 + 0.5),
+        math.floor(rgb[3] * 255 + 0.5))
+end
 
 
 -- =============================================================================
@@ -2662,6 +2672,12 @@ local function BuildSettingsUI()
     backBtn:SetText("Back")
     backBtn:SetScript("OnClick", function() HideSettings() end)
 
+    local helpBtn = CreateFrame("Button", nil, settingsFrame, "UIPanelButtonTemplate")
+    helpBtn:SetSize(70, 22)
+    helpBtn:SetPoint("BOTTOM", settingsFrame, "BOTTOM", 0, 10)
+    helpBtn:SetText("Help")
+    helpBtn:SetScript("OnClick", function() ShowHelp() end)
+
     local applyBtn = CreateFrame("Button", nil, settingsFrame, "UIPanelButtonTemplate")
     applyBtn:SetSize(70, 22)
     applyBtn:SetPoint("BOTTOMRIGHT", settingsFrame, "BOTTOMRIGHT", -10, 10)
@@ -2669,6 +2685,7 @@ local function BuildSettingsUI()
     applyBtn:SetScript("OnClick", function() ApplySettings() end)
 
     settingsFrame.backBtn = backBtn
+    settingsFrame.helpBtn = helpBtn
     settingsFrame.applyBtn = applyBtn
 
     local totalHeight = HEADER_OFFSET + (#SETTINGS_SPEC * 24) + 44
@@ -2730,6 +2747,88 @@ function ApplySettings()
     ApplyBlizzardTrackerState()
     HideSettings()
     Refresh()
+
+end
+
+
+-- =============================================================================
+-- HELP UI
+-- =============================================================================
+
+local helpFrame
+
+-- Gold highlight derived from our central palette so the help cheatsheet
+-- matches the section-title colour by reference, not coincidence.
+local GOLD = ColorToEscape(UI_COLORS.sectionTitle)
+local RESET = "|r"
+
+local HELP_BODY_TEXT =
+    "• " .. GOLD .. "Left Click:" .. RESET .. " Expand/Collapse the quest/activity.\n"
+    .. "• " .. GOLD .. "Right Click:" .. RESET .. " Open quest/activity in relevant window.\n"
+    .. "• " .. GOLD .. "Shift + Left Click:" .. RESET .. " Stop tracking quest/activity.\n"
+    .. "• " .. GOLD .. "Ctrl + Left Click:" .. RESET .. " \"Super Track\" quest/activity (shows way point).\n"
+    .. "• " .. GOLD .. "Ctrl + Right Click:" .. RESET .. " Dump debug information about quest/activity.\n"
+    .. "\n"
+    .. "You can shrink the entire quest log down by " .. GOLD .. "clicking on the title" .. RESET .. "."
+
+local function BuildHelpUI()
+
+    if helpFrame then return end
+
+    helpFrame = CreateFrame("Frame", "BooshiesQuestLogHelpFrame", UIParent)
+    helpFrame:SetSize(480, 260)
+    helpFrame:SetFrameStrata("HIGH")
+    helpFrame:EnableMouse(true)
+    helpFrame:SetClampedToScreen(true)
+    helpFrame:Hide()
+    ApplyFlatSkin(helpFrame)
+
+    -- Closes on Escape.
+    tinsert(UISpecialFrames, "BooshiesQuestLogHelpFrame")
+
+    local title = helpFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalMed1")
+    title:SetPoint("LEFT", helpFrame, "TOPLEFT", 8, -19)
+    title:SetText("Booshie's Quest Log")
+
+    -- Set the FontString's vertex colour from our palette so the inline
+    -- |r resets in HELP_BODY_TEXT return to our white instead of GameFontNormal's
+    -- default gold.
+    local body = helpFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    body:SetTextColor(unpack(UI_COLORS.itemTitle))
+    body:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -10)
+    body:SetPoint("RIGHT", helpFrame, "RIGHT", -12, 0)
+    body:SetJustifyH("LEFT")
+    body:SetJustifyV("TOP")
+    body:SetSpacing(4)
+    body:SetWordWrap(true)
+    body:SetText(HELP_BODY_TEXT)
+
+    local closeBtn = CreateFrame("Button", nil, helpFrame, "UIPanelButtonTemplate")
+    closeBtn:SetSize(70, 22)
+    closeBtn:SetPoint("BOTTOM", helpFrame, "BOTTOM", 0, 10)
+    closeBtn:SetText("Close")
+    closeBtn:SetScript("OnClick", function() HideHelp() end)
+
+    helpFrame.title = title
+    helpFrame.body = body
+    helpFrame.closeBtn = closeBtn
+
+end
+
+function ShowHelp()
+
+    BuildHelpUI()
+
+    helpFrame:ClearAllPoints()
+    helpFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    helpFrame:Show()
+
+end
+
+function HideHelp()
+
+    if helpFrame then helpFrame:Hide() end
+    BooshiesQuestLogDB.helpShown = true
 
 end
 
@@ -3063,6 +3162,8 @@ ev:SetScript("OnEvent", function(self, event, arg1)
             ApplyBlizzardTrackerState()
             Reschedule()
 
+            if not BooshiesQuestLogDB.helpShown then ShowHelp() end
+
         elseif event == "PLAYER_ENTERING_WORLD" then
             ApplyBlizzardTrackerState()
             Reschedule()
@@ -3102,8 +3203,10 @@ SlashCmdList["BOOSHIESQUESTLOG"] = function(msg)
     elseif msg == "reset" then
         BooshiesQuestLogDB.point = DEFAULTS.point
         BooshiesQuestLogDB.maxHeight = DEFAULTS.maxHeight
+        BooshiesQuestLogDB.helpShown = false
         RestorePosition()
         Refresh()
+        ShowHelp()
         print("|cff4fc3f7BQL:|r position + height reset")
     elseif msg == "refresh" then
         Refresh()
