@@ -1,0 +1,141 @@
+# Booshie's Lua Coding Style Guide
+
+Conventions for `.lua` files in this repository.
+
+## Whitespace & Visual Layout
+
+We should organise our code logically into paragraphs that are visually separated from their neighbours, in the same way we organise our ideas in to paragraphs when writing. This allows the reader to easily identify related code/ideas without re-reading.
+
+---
+
+### 1. Function bodies breathe
+
+Add a blank line after the function signature, and before the closing `end`. Applies to any function with a real body. Skip for trivial one-line accessors (e.g. `local function isFoo(x) return x.y end`).
+
+```lua
+-- Avoid
+local function ScrollIntoView(child)
+    if not child then return end
+    -- ...
+end
+
+-- Prefer
+local function ScrollIntoView(child)
+
+    if not child then
+        return
+    end
+    -- ...
+
+end
+```
+
+---
+
+### 2. Branches: compact only when simple
+
+A branch may stay on one line when **both**:
+
+1. Its body is a single statement.
+2. Its condition is short enough to read at a glance.
+
+Expand onto multiple lines if either side gets complex: multiple statements in the body, or a long / deeply combined condition.
+
+```lua
+-- OK: simple condition, single statement
+if not row then return end
+if target < 0 then target = 0 end
+if a or b then doThing() end
+
+-- Borderline: a few simple checks can stay compact if
+-- the line still reads at a glance (use your judgement)
+if not cTop or not rTop or not rBottom then return end
+
+-- Avoid: multiple actions crammed onto one line
+if reset then target = 0; pendingScrollKey = nil end
+
+-- Prefer: expanded
+if reset then
+    target = 0
+    pendingScrollKey = nil
+end
+```
+
+The same rule applies per branch in `elseif` / `else` chains — count statements and condition complexity for each branch independently, not across the whole `if`/`end` block.
+
+---
+
+### 3. Logical paragraphs separated by blank lines
+
+Inside a function, group related ideas and statements that 'do one thing together' in to paragraphs, with a blank line between each paragraph. A paragraph with one line is fine when the line is load-bearing — early returns, key state mutations, the function's primary side-effect.
+
+```lua
+local cTop = content:GetTop()
+local rTop = child:GetTop()
+local rBottom = child:GetBottom()
+
+if not cTop or not rTop or not rBottom then
+    return
+end
+
+padding = padding or ROW_GAP
+
+local y = cTop - rTop
+local h = rTop - rBottom
+```
+
+---
+
+### 4. Variable declarations are their own paragraph
+
+A run of `local` declarations is a paragraph in its own right. When the next chunk of code tests, validates, or otherwise operates on them, put a blank line between the declarations and that logic.
+
+The exception: a single declaration paired tightly with something like a simple clamp or normalisation that mutates *that same variable* reads as one unit and may stay together with no blank line.
+
+```lua
+-- OK: single declaration + immediate clamp on the same variable
+local cTop = content:GetTop()
+if cTop < minTop then cTop = minTop end
+
+-- Avoid: declarations followed by logic with no break
+local cTop = content:GetTop()
+local rTop = child:GetTop()
+local rBottom = child:GetBottom()
+if not cTop or not rTop or not rBottom then
+    return
+end
+
+-- Prefer: blank line before the logic paragraph
+local cTop = content:GetTop()
+local rTop = child:GetTop()
+local rBottom = child:GetBottom()
+
+if not cTop or not rTop or not rBottom then
+    return
+end
+
+-- Avoid: multiple declarations + clamp on only one of them
+local cTop = content:GetTop()
+local rTop = child:GetTop()
+local rBottom = child:GetBottom()
+if rBottom < maxBottom then rBottom = maxBottom end
+
+-- Prefer: blank line first
+local cTop = content:GetTop()
+local rTop = child:GetTop()
+local rBottom = child:GetBottom()
+
+if rBottom < maxBottom then rBottom = maxBottom end
+```
+
+---
+
+## 5. Compact forms that stay compact
+
+Use commonsense when applying these rules. Creatin structures make more sense compact:
+
+- Lookup tables (`CLASSIFICATION_NAMES`, `REQUIRED_EVENTS`) — they're scannable as flat lists.
+- Trivial one-line accessors and predicates.
+- Short loop bodies where expanding hurts more than it helps.
+
+Rule of thumb: **expand when it aids readability**. If a compact form is already easy to parse at a glance, leave it alone.
