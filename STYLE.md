@@ -69,6 +69,8 @@ The same rule applies per branch in `elseif` / `else` chains — count statement
 
 Inside a function, group related ideas and statements that 'do one thing together' in to paragraphs, with a blank line between each paragraph. A paragraph with one line is fine when the line is load-bearing — early returns, key state mutations, the function's primary side-effect.
 
+This doesn't just apply to the top-level logic in a function, but also to logic within if-blocks, for-blocks, and so forth.
+
 ```lua
 local cTop = content:GetTop()
 local rTop = child:GetTop()
