@@ -484,17 +484,20 @@ local function GetRecipeName(recipeID)
 
 end
 
+-- Args after itemID: includeBank, includeCharges, includeReagentBank.
+-- Bank is included so reagents stashed there still count toward recipe progress,
+-- matching what Blizzard's own recipe tracker shows.
 local function ItemCount(itemID)
 
     if not itemID then return 0 end
 
     if C_Item and C_Item.GetItemCount then
-        local ok, n = pcall(C_Item.GetItemCount, itemID, false, false, true)
+        local ok, n = pcall(C_Item.GetItemCount, itemID, true, false, true)
         if ok and n then return n end
     end
 
     if _G.GetItemCount then
-        local ok, n = pcall(GetItemCount, itemID, false, false, true)
+        local ok, n = pcall(GetItemCount, itemID, true, false, true)
         if ok and n then return n end
     end
 
@@ -530,13 +533,20 @@ local function GetRecipeReagents(recipeID)
 
     for _, slot in ipairs(schematic.reagentSlotSchematics) do
         local needed = slot.quantityRequired or 0
-        local reagent = slot.reagents and slot.reagents[1]
 
-        if needed > 0 and reagent and reagent.itemID then
-            local have = ItemCount(reagent.itemID)
+        if needed > 0 and slot.reagents and slot.reagents[1] and slot.reagents[1].itemID then
+            -- A slot's `reagents` list holds every quality variant that fills it
+            -- (q1/q2/q3 of the same base item). Sum across all variants so a
+            -- player holding only q3 still sees their stockpile count.
+            local have = 0
+            for _, reagent in ipairs(slot.reagents) do
+                if reagent.itemID then
+                    have = have + ItemCount(reagent.itemID)
+                end
+            end
 
             reagents[#reagents + 1] = {
-                text = ItemName(reagent.itemID),
+                text = ItemName(slot.reagents[1].itemID),
                 numFulfilled = have,
                 numRequired = needed,
                 finished = have >= needed,
@@ -1098,7 +1108,6 @@ local function MeasureObjectiveParts(objectives)
 
     for i, obj in ipairs(objectives) do
         local desc, count = SplitObjective(obj)
-        if obj.finished then count = nil end
 
         parts[i] = { desc = desc, count = count, finished = obj.finished }
 
@@ -1578,6 +1587,61 @@ local function DumpAchievementMetadata(achID)
 
 end
 
+local function DumpRecipeMetadata(recipeID)
+
+    if not recipeID then return end
+
+    local function p(fmt, ...) print(("|cff4fc3f7BQL|r " .. fmt):format(...)) end
+
+    p("--- Recipe %d ---", recipeID)
+
+    if C_TradeSkillUI and C_TradeSkillUI.GetRecipeInfo then
+        local ok, info = pcall(C_TradeSkillUI.GetRecipeInfo, recipeID)
+        if ok and type(info) == "table" then
+            local keys = {}
+            for k in pairs(info) do table.insert(keys, k) end
+            table.sort(keys)
+            for _, k in ipairs(keys) do
+                p("  info.%s = %s", k, tostring(info[k]))
+            end
+        else
+            p("  (no recipe info)")
+        end
+    end
+
+    if C_TradeSkillUI and C_TradeSkillUI.GetRecipeSchematic then
+        local ok, schematic = pcall(C_TradeSkillUI.GetRecipeSchematic, recipeID, false)
+        if ok and type(schematic) == "table" then
+            p("schematic.recipeID: %s", tostring(schematic.recipeID))
+            p("schematic.name: %s", tostring(schematic.name))
+
+            local slots = schematic.reagentSlotSchematics
+            if type(slots) == "table" then
+                p("reagentSlotSchematics: %d slots", #slots)
+                for si, slot in ipairs(slots) do
+                    p("  slot[%d] quantityRequired=%s, dataSlotType=%s, reagentType=%s",
+                        si,
+                        tostring(slot.quantityRequired),
+                        tostring(slot.dataSlotType),
+                        tostring(slot.reagentType))
+
+                    if type(slot.reagents) == "table" then
+                        for ri, reagent in ipairs(slot.reagents) do
+                            local name = reagent.itemID and ItemName(reagent.itemID) or "?"
+                            local count = reagent.itemID and ItemCount(reagent.itemID) or 0
+                            p("    reagent[%d] itemID=%s (%s), have=%d",
+                                ri, tostring(reagent.itemID), tostring(name), count)
+                        end
+                    end
+                end
+            end
+        else
+            p("  (no schematic)")
+        end
+    end
+
+end
+
 
 -- =============================================================================
 -- ROW LIFECYCLE
@@ -1847,6 +1911,8 @@ local function CreateRow()
                     DumpQuestMetadata(row.questID)
                 elseif row.achievementID then
                     DumpAchievementMetadata(row.achievementID)
+                elseif row.recipeID then
+                    DumpRecipeMetadata(row.recipeID)
                 end
             end
             return
