@@ -177,6 +177,42 @@ local UI_TEXTURES = { ... }
 local function GetAchievementHeader(achID) ... end
 ```
 
+### Concise inline commments beat lengthy exposition
+
+When a comment explains something specific to a particular line or block of code, place it at that line. Lengthy exposition at the top of a function that bundles several unrelated WHYs is harder to understand than the same facts placed inline at their respective points.
+
+A top-of-function comment is fine for an invariant that genuinely spans the whole function. It is wrong for a collection of unrelated point-comments to be dressed up as a header.
+
+```lua
+-- Avoid: lenghty exposition at top of function that mixes unrelated WHYs
+-- First refresh after load is treated as a baseline so we do not fire
+-- for every existing tracked item. Items hidden by the zone filter
+-- still get marked expanded, and the scroll pin silently no-ops since
+-- they will not be in activeRows.
+local function DetectAndShowNewlyTracked(currentKeys)
+    -- ...
+end
+
+-- Prefer: each WHY at the line or block of code it explains
+local function DetectAndShowNewlyTracked(currentKeys)
+
+    if not previousTrackedKeys then
+        -- First refresh after load: capture baseline silently so we
+        -- do not fire for every already-tracked item.
+        previousTrackedKeys = currentKeys
+        return
+    end
+
+    -- Mark expanded even if the zone filter is hiding this item.
+    expandedKeys[key] = true
+
+    -- Hidden-by-filter items have no matching row in activeRows, so
+    -- ApplyPendingScroll naturally no-ops for them.
+    if lastNewKey then ... end
+
+end
+```
+
 ### Dividers in tables
 
 Short labels grouping entries inside a table or list aren't really comments — they're visual aids. Use **Title Case** for short headers.
