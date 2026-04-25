@@ -51,6 +51,24 @@ local function firstNonEmptyField(obj, keys)
     return nil
 end
 
+local function tryAppendIDs(list, seen, fn, ...)
+
+    local ok, ids = pcall(fn, ...)
+    if not ok or type(ids) ~= "table" then return false end
+
+    local appended = false
+    for _, id in ipairs(ids) do
+        if id and id ~= 0 and (not seen or not seen[id]) then
+            list[#list + 1] = id
+            if seen then seen[id] = true end
+            appended = true
+        end
+    end
+
+    return appended
+
+end
+
 local DEFAULTS = {
     enabled = true,
     filterByZone = false,
@@ -245,25 +263,22 @@ local function GetClassification(questID)
 end
 
 local function GetTrackedAchievementList()
+
     local list = {}
+
     if _G.GetTrackedAchievements then
-        local packed = { GetTrackedAchievements() }
-        for _, id in ipairs(packed) do
-            if id and id ~= 0 then list[#list + 1] = id end
-        end
+        tryAppendIDs(list, nil, function() return { GetTrackedAchievements() } end)
     end
+
     if #list == 0 and C_ContentTracking and C_ContentTracking.GetTrackedIDs then
         local t = Enum and Enum.ContentTrackingType and Enum.ContentTrackingType.Achievement
         if t ~= nil then
-            local ok, ids = pcall(C_ContentTracking.GetTrackedIDs, t)
-            if ok and type(ids) == "table" then
-                for _, id in ipairs(ids) do
-                    if id and id ~= 0 then list[#list + 1] = id end
-                end
-            end
+            tryAppendIDs(list, nil, C_ContentTracking.GetTrackedIDs, t)
         end
     end
+
     return list
+
 end
 
 -- Returns the achievement's best display text plus its completion state.
@@ -318,23 +333,16 @@ local function GetAchievementProgress(achID)
 end
 
 local function GetTrackedRecipeList()
+
     local list = {}
     if not C_TradeSkillUI or not C_TradeSkillUI.GetRecipesTracked then return list end
+
     local seen = {}
-    local function collect(isRecraft)
-        local ok, tracked = pcall(C_TradeSkillUI.GetRecipesTracked, isRecraft)
-        if ok and type(tracked) == "table" then
-            for _, id in ipairs(tracked) do
-                if id and not seen[id] then
-                    seen[id] = true
-                    list[#list + 1] = id
-                end
-            end
-        end
-    end
-    collect(false)
-    collect(true)
+    tryAppendIDs(list, seen, C_TradeSkillUI.GetRecipesTracked, false)
+    tryAppendIDs(list, seen, C_TradeSkillUI.GetRecipesTracked, true)
+
     return list
+
 end
 
 local function GetRecipeName(recipeID)
@@ -414,23 +422,24 @@ local function ActivityID(activity)
 end
 
 local function GetTrackedMonthlyActivities()
+
     local list = {}
+
     if C_PerksActivities and C_PerksActivities.GetTrackedPerksActivities then
-        local ok, tracked = pcall(C_PerksActivities.GetTrackedPerksActivities)
-        if ok and type(tracked) == "table" and #tracked > 0 then
-            for _, id in ipairs(tracked) do
-                if id then list[#list + 1] = id end
-            end
+        if tryAppendIDs(list, nil, C_PerksActivities.GetTrackedPerksActivities) then
             return list
         end
     end
+
     IterateActivities(function(activity)
         if activity.tracked then
             local id = ActivityID(activity)
             if id then list[#list + 1] = id end
         end
     end)
+
     return list
+
 end
 
 local function GetActivityInfo(id)
@@ -463,15 +472,12 @@ local function TaskID(t)
 end
 
 local function GetTrackedInitiativeTasks()
+
     local list = {}
     if not C_NeighborhoodInitiative then return list end
 
     if C_NeighborhoodInitiative.GetTrackedInitiativeTasks then
-        local ok, tracked = pcall(C_NeighborhoodInitiative.GetTrackedInitiativeTasks)
-        if ok and type(tracked) == "table" and #tracked > 0 then
-            for _, id in ipairs(tracked) do
-                if id then list[#list + 1] = id end
-            end
+        if tryAppendIDs(list, nil, C_NeighborhoodInitiative.GetTrackedInitiativeTasks) then
             return list
         end
     end
@@ -485,7 +491,9 @@ local function GetTrackedInitiativeTasks()
             end
         end
     end
+
     return list
+
 end
 
 local function GetInitiativeTaskInfo(id)
