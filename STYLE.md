@@ -177,7 +177,7 @@ local UI_TEXTURES = { ... }
 local function GetAchievementHeader(achID) ... end
 ```
 
-### Section dividers in tables
+### Dividers in tables
 
 Short labels grouping entries inside a table or list aren't really comments — they're visual aids. Use **Title Case** for short headers.
 
@@ -192,3 +192,27 @@ local UI_COLORS = {
     -- ...
 }
 ```
+
+---
+
+### Section headers
+
+Section headers should be used to help break up large files and keep them easy to navigate.
+
+Section headers should be a three line banner padded to exactly 80 columns. There should be two blank lines above the banner (an extra blank line beyond the usual single blank between top-level declarations) and one blank line below it before the first declaration in the section.
+
+Section names should be CAPITLISED.
+
+```lua
+
+
+-- =============================================================================
+-- SECTION NAME
+-- =============================================================================
+
+local function FirstThingInSection()
+```
+
+The two blank lines above are the rule that distinguishes a section break from an ordinary declaration break. A reader scrolling the file sees the extra space before they see the banner itself.
+
+---

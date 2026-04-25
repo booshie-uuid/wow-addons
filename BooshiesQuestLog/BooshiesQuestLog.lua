@@ -1,3 +1,7 @@
+-- =============================================================================
+-- BOOTSTRAP & CORE UTILITIES
+-- =============================================================================
+
 local ADDON_NAME = ...
 
 BooshiesQuestLogDB = BooshiesQuestLogDB or {}
@@ -71,6 +75,11 @@ local function tryAppendIDs(list, seen, fn, ...)
     return appended
 
 end
+
+
+-- =============================================================================
+-- DEFAULTS & LOOKUPS
+-- =============================================================================
 
 local DEFAULTS = {
     enabled = true,
@@ -152,6 +161,11 @@ local UI_COLORS = {
     objectiveUnfinished = { 0.95, 0.82, 0.36 },
 }
 
+
+-- =============================================================================
+-- INIT
+-- =============================================================================
+
 local function InitDB()
     for k, v in pairs(DEFAULTS) do
         if BooshiesQuestLogDB[k] == nil then BooshiesQuestLogDB[k] = v end
@@ -167,6 +181,11 @@ local function InitDB()
     end
 end
 
+
+-- =============================================================================
+-- MAP & ZONE HELPERS
+-- =============================================================================
+
 local function GetPlayerZoneMapID()
     return C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
 end
@@ -176,6 +195,11 @@ local function GetMapName(mapID)
     local info = C_Map.GetMapInfo(mapID)
     return info and info.name
 end
+
+
+-- =============================================================================
+-- QUEST DATA
+-- =============================================================================
 
 local function SnapshotQuestLog()
     local snapshot, headerName = {}, nil
@@ -266,6 +290,11 @@ local function GetClassification(questID)
     return 7
 end
 
+
+-- =============================================================================
+-- ACHIEVEMENT DATA
+-- =============================================================================
+
 local function GetTrackedAchievementList()
 
     local list = {}
@@ -334,6 +363,11 @@ local function GetAchievementProgress(achID)
     end
     return ComputeProgress(GetAchievementCriteriaList(achID))
 end
+
+
+-- =============================================================================
+-- RECIPE DATA
+-- =============================================================================
 
 local function GetTrackedRecipeList()
 
@@ -406,6 +440,11 @@ end
 local function GetRecipeProgress(recipeID)
     return ComputeProgress(GetRecipeReagents(recipeID))
 end
+
+
+-- =============================================================================
+-- ACTIVITY & INITIATIVE DATA
+-- =============================================================================
 
 local function IterateActivities(callback)
     if not C_PerksActivities or not C_PerksActivities.GetPerksActivitiesInfo then return end
@@ -613,6 +652,11 @@ local function GetActivityProgress(id)
     return f, true
 end
 
+
+-- =============================================================================
+-- QUEST VISIBILITY & PROGRESS
+-- =============================================================================
+
 local function GetQuestProgress(questID)
     return ComputeProgress(C_QuestLog.GetQuestObjectives(questID))
 end
@@ -634,6 +678,11 @@ local function ShouldShow(questID, snapshot, poiSet, currentMapID, currentMapNam
     if BooshiesQuestLogDB.alwaysShowCampaign and IsCampaign(info) then return true end
     return false
 end
+
+
+-- =============================================================================
+-- UI CONSTANTS & STATE
+-- =============================================================================
 
 local ROW_HEIGHT = 26
 local ROW_GAP = 6
@@ -658,6 +707,11 @@ local SCROLL_PIN_WINDOW = 0.3
 local previousTrackedKeys
 local pendingFlashKeys = {}
 local FLASH_DURATION = 0.8
+
+
+-- =============================================================================
+-- FRAME POSITION
+-- =============================================================================
 
 local function SavePosition()
     if not frame then return end
@@ -684,6 +738,11 @@ end
 local HEADER_OFFSET = 46
 local BOTTOM_PAD = 16
 local Refresh
+
+
+-- =============================================================================
+-- LAYOUT & SCROLL
+-- =============================================================================
 
 local function RelayoutLayout(layout)
     layout = layout or {}
@@ -774,6 +833,11 @@ local function ScrollIntoView(child, padding)
     if target > maxScroll then target = maxScroll end
     scrollFrame:SetVerticalScroll(target)
 end
+
+
+-- =============================================================================
+-- ROW EXPAND/COLLAPSE
+-- =============================================================================
 
 local function CollapseRow(row)
 
@@ -949,6 +1013,11 @@ local function ExpandRow(row)
     row:SetHeight(ROW_HEIGHT + OBJ_TOP_PAD + totalY + OBJ_BOTTOM_PAD)
 end
 
+
+-- =============================================================================
+-- DETAILS DIALOGS
+-- =============================================================================
+
 local function OpenQuestDetails(questID)
     if not questID then return end
     if _G.QuestMapFrame_OpenToQuestDetails then
@@ -1018,6 +1087,11 @@ local function OpenAchievementDetails(achID)
     end
 end
 
+
+-- =============================================================================
+-- UNTRACK
+-- =============================================================================
+
 local function tryCall(fn, ...)
     if type(fn) ~= "function" then return false end
     local ok = pcall(fn, ...)
@@ -1069,6 +1143,11 @@ local function UntrackRow(row)
         end
     end
 end
+
+
+-- =============================================================================
+-- DEBUG DUMPS
+-- =============================================================================
 
 local function DumpQuestMetadata(questID)
     if not questID then return end
@@ -1195,6 +1274,11 @@ local function DumpAchievementMetadata(achID)
         end
     end
 end
+
+
+-- =============================================================================
+-- ROW LIFECYCLE
+-- =============================================================================
 
 local function RowKey(row)
     if not row then return nil end
@@ -1493,6 +1577,11 @@ local function ReleaseRow(row)
     table.insert(rowPool, row)
 end
 
+
+-- =============================================================================
+-- SECTION LIFECYCLE
+-- =============================================================================
+
 local sectionPool, activeSections = {}, {}
 local SECTION_HEIGHT = 22
 
@@ -1589,6 +1678,11 @@ local function RenderSection(spec)
     end
 
 end
+
+
+-- =============================================================================
+-- REFRESH PIPELINE
+-- =============================================================================
 
 local function BuildQuestGroups(mapID, mapName)
 
@@ -1991,6 +2085,11 @@ end
 
 Refresh = function() safeCall("Refresh", RefreshUI) end
 
+
+-- =============================================================================
+-- BLIZZARD TRACKER INTEGRATION
+-- =============================================================================
+
 local BLIZZARD_QUEST_MODULES = {
     "QuestObjectiveTracker",
     "CampaignQuestObjectiveTracker",
@@ -2074,6 +2173,11 @@ local function ApplyFlatSkin(f)
     end
     edge("top"); edge("bottom"); edge("left"); edge("right")
 end
+
+
+-- =============================================================================
+-- SETTINGS UI
+-- =============================================================================
 
 local SETTINGS_SPEC = {
     { key = "filterByZone",           label = "Filter Quests by Current Zone" },
@@ -2184,6 +2288,11 @@ function ApplySettings()
     HideSettings()
     Refresh()
 end
+
+
+-- =============================================================================
+-- MAIN UI CONSTRUCTION
+-- =============================================================================
 
 local function BuildMainFrame()
 
@@ -2400,6 +2509,11 @@ local function BuildUI()
 
 end
 
+
+-- =============================================================================
+-- SUPER-TRACK STATE
+-- =============================================================================
+
 local function UpdateSuperTrackState()
     local current = C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID and C_SuperTrack.GetSuperTrackedQuestID() or 0
     for _, row in ipairs(activeRows) do
@@ -2418,6 +2532,11 @@ ToggleSuperTrack = function(questID)
         C_SuperTrack.SetSuperTrackedQuestID(questID)
     end
 end
+
+
+-- =============================================================================
+-- EVENTS
+-- =============================================================================
 
 local pending = false
 local function Reschedule()
@@ -2492,6 +2611,11 @@ ev:SetScript("OnEvent", function(self, event, arg1)
         end
     end)
 end)
+
+
+-- =============================================================================
+-- SLASH COMMANDS
+-- =============================================================================
 
 local function PrintStatus(label, value)
     print(("|cff4fc3f7BQL:|r %s %s"):format(label, value and "|cff00ff00on|r" or "|cffff6666off|r"))
