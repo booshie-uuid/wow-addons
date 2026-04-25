@@ -601,6 +601,14 @@ local frame, titleText, zoneText, content, scrollFrame, settingsFrame
 local ToggleSuperTrack
 local activeRows, rowPool = {}, {}
 
+-- After a row click, debounced WoW events (QUEST_LOG_UPDATE, BAG_UPDATE_DELAYED,
+-- etc.) often trigger another Refresh ~50ms later, and the second layout pass
+-- can shift content slightly (lazy text measurement, scrollbar appear/disappear).
+-- We pin the click target by key for a short window and re-apply ScrollIntoView
+-- at the end of each refresh within that window.
+local pendingScrollKey, pendingScrollExpiresAt
+local SCROLL_PIN_WINDOW = 0.3
+
 local function SavePosition()
     if not frame then return end
     local right = frame:GetRight()
@@ -682,6 +690,39 @@ local function RelayoutLayout(layout)
     content:SetWidth(math.max(contentWidth, 1))
 
     if scrollFrame.UpdateScrollChildRect then scrollFrame:UpdateScrollChildRect() end
+end
+
+-- Adjusts the scroll frame so `child` (any frame anchored inside the content panel)
+-- is fully visible. Does nothing if it already is. 
+-- Picks the smallest change that would bring the entire child into view, aligning
+-- to the top edge if scrolling up, to the bottom edge if scrolling down.
+local function ScrollIntoView(child, padding)
+    if not child or not scrollFrame or not content then return end
+    if not scrollFrame.SetVerticalScroll then return end
+    local cTop = content:GetTop()
+    local rTop = child:GetTop()
+    local rBottom = child:GetBottom()
+    if not cTop or not rTop or not rBottom then return end
+
+    padding = padding or ROW_GAP
+    local y = cTop - rTop                -- child's top offset within content
+    local h = rTop - rBottom             -- child's height
+    local viewport = scrollFrame:GetHeight() or 0
+    local scroll = scrollFrame:GetVerticalScroll() or 0
+    local maxScroll = scrollFrame:GetVerticalScrollRange() or 0
+
+    local target
+    if y - padding < scroll - 0.5 then
+        target = y - padding
+    elseif y + h + padding > scroll + viewport + 0.5 then
+        target = y + h + padding - viewport
+    else
+        return
+    end
+
+    if target < 0 then target = 0 end
+    if target > maxScroll then target = maxScroll end
+    scrollFrame:SetVerticalScroll(target)
 end
 
 local function CollapseRow(row)
@@ -1120,6 +1161,9 @@ local function RowKey(row)
     if row.questID then
         return "quest:" .. row.questID
     end
+    if row._kind == "section" and row.classification ~= nil then
+        return "section:" .. tostring(row.classification)
+    end
     return nil
 end
 
@@ -1132,6 +1176,8 @@ local function OnRowClick(row)
     else
         BooshiesQuestLogDB.expandedKeys[key] = true
     end
+    pendingScrollKey = key
+    pendingScrollExpiresAt = GetTime() + SCROLL_PIN_WINDOW
     Refresh()
 end
 
@@ -1399,6 +1445,8 @@ local function CreateSectionHeader()
         if cls == nil then return end
         BooshiesQuestLogDB.collapsedSections = BooshiesQuestLogDB.collapsedSections or {}
         BooshiesQuestLogDB.collapsedSections[cls] = not BooshiesQuestLogDB.collapsedSections[cls]
+        pendingScrollKey = RowKey(self)
+        pendingScrollExpiresAt = GetTime() + SCROLL_PIN_WINDOW
         Refresh()
     end)
 
@@ -1685,6 +1733,23 @@ local refreshImpl = function()
     end
 
     RelayoutLayout(layout)
+
+    if pendingScrollKey then
+        if pendingScrollExpiresAt and GetTime() > pendingScrollExpiresAt then
+            pendingScrollKey, pendingScrollExpiresAt = nil, nil
+        else
+            local target
+            for _, r in ipairs(activeRows) do
+                if RowKey(r) == pendingScrollKey then target = r; break end
+            end
+            if not target then
+                for _, h in ipairs(activeSections) do
+                    if RowKey(h) == pendingScrollKey then target = h; break end
+                end
+            end
+            if target then ScrollIntoView(target) end
+        end
+    end
 end
 
 Refresh = function() safeCall("Refresh", refreshImpl) end
