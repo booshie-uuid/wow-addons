@@ -2243,10 +2243,11 @@ local function PrintStatus(label, value)
 end
 
 SLASH_BOOSHIESQUESTLOG1 = "/bql"
-SLASH_BOOSHIESQUESTLOG2 = "/sql"
-SLASH_BOOSHIESQUESTLOG3 = "/booshiesquestlog"
+SLASH_BOOSHIESQUESTLOG2 = "/booshiesquestlog"
 SlashCmdList["BOOSHIESQUESTLOG"] = function(msg)
+
     msg = (msg or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
+
     if msg == "" or msg == "toggle" then
         BooshiesQuestLogDB.enabled = not BooshiesQuestLogDB.enabled
         PrintStatus("tracker", BooshiesQuestLogDB.enabled)
@@ -2259,73 +2260,8 @@ SlashCmdList["BOOSHIESQUESTLOG"] = function(msg)
         print("|cff4fc3f7BQL:|r position + height reset")
     elseif msg == "refresh" then
         Refresh()
-    elseif msg == "evdbg" then
-        BooshiesQuestLog_EvDbg = BooshiesQuestLog_EvDbg or CreateFrame("Frame")
-        if BooshiesQuestLog_EvDbg._on then
-            BooshiesQuestLog_EvDbg:UnregisterAllEvents()
-            BooshiesQuestLog_EvDbg._on = false
-            print("|cff4fc3f7BQL|r event debug OFF")
-        else
-            BooshiesQuestLog_EvDbg:RegisterAllEvents()
-            BooshiesQuestLog_EvDbg:SetScript("OnEvent", function(self, event, a1, a2, a3)
-                print(("|cff4fc3f7BQL ev|r %s %s %s %s"):format(event, tostring(a1), tostring(a2), tostring(a3)))
-            end)
-            BooshiesQuestLog_EvDbg._on = true
-            print("|cff4fc3f7BQL|r event debug ON - interact in-game and watch chat. /bql evdbg to stop.")
-        end
-    elseif msg == "capture" then
-        if not BooshiesQuestLog_CaptureHooked then
-            BooshiesQuestLog_CaptureHooked = true
-            BooshiesQuestLog_CaptureSeen = {}
-            local function argstr(...)
-                local n = select("#", ...)
-                local t = {}
-                for i = 1, n do t[i] = tostring(select(i, ...)) end
-                return table.concat(t, ", ")
-            end
-            local function logOnce(key, label)
-                if not BooshiesQuestLog_CaptureSeen[key] then
-                    BooshiesQuestLog_CaptureSeen[key] = true
-                    print("|cff4fc3f7cap|r " .. label)
-                end
-            end
-            local hooked, skipped = 0, 0
-            for gname, gval in pairs(_G) do
-                if type(gname) == "string" and gname:sub(1, 2) == "C_" and type(gval) == "table" then
-                    for fname, fn in pairs(gval) do
-                        if type(fn) == "function" then
-                            local ns, nm = gname, fname
-                            local ok = pcall(hooksecurefunc, gval, nm, function(...)
-                                if BooshiesQuestLogDB.capture then
-                                    logOnce(ns .. "." .. nm, ("%s.%s(%s)"):format(ns, nm, argstr(...)))
-                                end
-                            end)
-                            if ok then hooked = hooked + 1 else skipped = skipped + 1 end
-                        end
-                    end
-                end
-            end
-            for _, gname in ipairs({
-                "RemoveTrackedAchievement", "AddTrackedAchievement",
-                "SetSuperTrackedQuestID", "RemoveQuestWatch", "AddQuestWatch",
-                "RemoveWorldQuestWatch", "AddWorldQuestWatch",
-            }) do
-                if _G[gname] then
-                    pcall(hooksecurefunc, gname, function(...)
-                        if BooshiesQuestLogDB.capture then
-                            logOnce(gname, ("%s(%s)"):format(gname, argstr(...)))
-                        end
-                    end)
-                end
-            end
-            print(("|cff4fc3f7BQL|r hooked %d C_* functions (%d skipped)"):format(hooked, skipped))
-        end
-        BooshiesQuestLogDB.capture = not BooshiesQuestLogDB.capture
-        if BooshiesQuestLogDB.capture then
-            BooshiesQuestLog_CaptureSeen = {}
-        end
-        print("|cff4fc3f7BQL|r capture: " .. (BooshiesQuestLogDB.capture and "|cff00ff00ON|r (dedupe reset)" or "|cffff6666OFF|r"))
     else
-        print("|cff4fc3f7BQL:|r /bql [toggle|reset|refresh|evdbg|capture]")
+        print("|cff4fc3f7BQL:|r /bql [toggle||reset||refresh]")
     end
+
 end
