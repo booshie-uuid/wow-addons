@@ -81,21 +81,54 @@ local CLASSIFICATION_NAMES = {
     [10] = "World Quests",
 }
 
-local CLASSIFICATION_COLORS = {
-    [0]  = { 1.00, 0.82, 0.25 },
-    [1]  = { 1.00, 0.50, 1.00 },
-    [2]  = { 0.40, 0.78, 1.00 },
-    [3]  = { 0.70, 1.00, 0.70 },
-    [4]  = { 0.90, 0.70, 1.00 },
-    [5]  = { 0.70, 0.85, 0.85 },
-    [6]  = { 0.55, 0.90, 0.55 },
-    [7]  = { 1.00, 1.00, 1.00 },
-    [8]  = { 0.90, 0.85, 0.55 },
-    [9]  = { 1.00, 0.45, 0.45 },
-    [10] = { 0.40, 0.90, 1.00 },
+local CLASSIFICATION_ORDER = { 2, 0, 4, 5, 1, 6, 9, 7, 3, 10, 8 }
+
+local UI_TEXTURES = {
+    plusButton  = "Interface\\Buttons\\UI-PlusButton-Up",
+    minusButton = "Interface\\Buttons\\UI-MinusButton-Up",
+    checkmark   = "Interface\\RAIDFRAME\\ReadyCheck-Ready",
+    radioButton = "Interface\\Buttons\\UI-RadioButton",
+    cog         = "Interface\\Buttons\\UI-OptionsButton",
 }
 
-local CLASSIFICATION_ORDER = { 2, 0, 4, 5, 1, 6, 9, 7, 3, 10, 8 }
+-- RGBA for fills, RGB for text. Use unpack at call sites.
+local UI_COLORS = {
+    -- Row Backgrounds
+    superTrackBg     = { 1.0,  0.82, 0.0,  0.12 },
+    completedBg      = { 0.12, 0.35, 0.15, 0.45 },
+
+    -- Progress Bar
+    barBg            = { 0.22, 0.22, 0.24, 0.95 },
+    barFill          = { 0.95, 0.82, 0.36, 0.9  },
+    barFillComplete  = { 0.35, 0.9,  0.35, 0.9  },
+
+    -- Separators / Overlays
+    rowSeparator     = { 1, 1, 1, 0.07 },
+    rowHover         = { 1, 1, 1, 0.06 },
+    sectionStripe    = { 1, 1, 1, 0.14 },
+    sectionSeparator = { 1, 1, 1, 0.07 },
+    sectionHover     = { 1, 1, 1, 0.07 },
+    cogHover         = { 1, 1, 1, 0.2  },
+
+    -- Settings Dialog
+    dialogBackdrop   = { 0,    0,    0,    0.78 },
+    dialogBorder     = { 0.25, 0.25, 0.27, 1    },
+
+    -- Resize Grip
+    resizeGrip       = { 0.45, 0.45, 0.48, 0.55 },
+    resizeGripHover  = { 1,    1,    1,    0.25 },
+
+    -- Text
+    sectionTitle        = { 1.0,  0.82, 0.0  },
+    itemTitle           = { 1,    1,    1    },
+    sectionCount        = { 0.85, 0.85, 0.85 },
+    zoneText            = { 0.7,  0.7,  0.7  },
+    collapseAllText     = { 0.55, 0.55, 0.6  },
+    collapseAllHover    = { 1,    1,    1    },
+    objectiveDot        = { 0.75, 0.75, 0.75 },
+    objectiveFinished   = { 0.55, 0.9,  0.55 },
+    objectiveUnfinished = { 0.95, 0.82, 0.36 },
+}
 
 local function InitDB()
     for k, v in pairs(DEFAULTS) do
@@ -726,10 +759,12 @@ local function ScrollIntoView(child, padding)
 end
 
 local function CollapseRow(row)
+
     row.expanded = false
-    row.arrow:SetTexture("Interface\\Buttons\\UI-PlusButton-Up")
+    row.arrow:SetTexture(UI_TEXTURES.plusButton)
     if row.objFrame then row.objFrame:Hide() end
     row:SetHeight(ROW_HEIGHT)
+
 end
 
 local OBJ_LEFT_INDENT = 3
@@ -765,7 +800,7 @@ end
 
 local function ExpandRow(row)
     row.expanded = true
-    row.arrow:SetTexture("Interface\\Buttons\\UI-MinusButton-Up")
+    row.arrow:SetTexture(UI_TEXTURES.minusButton)
 
     local contentW = (content and content:GetWidth()) or ((BooshiesQuestLogDB.width or 280) - 40)
     local objW = math.max(contentW - OBJ_LEFT_INDENT - OBJ_RIGHT_MARGIN, 60)
@@ -830,20 +865,20 @@ local function ExpandRow(row)
     local function placeObj(i, y, part)
         local e = getEntry(i)
         local isFinished = part.finished
-        local color = isFinished and { 0.55, 0.9, 0.55 } or { 0.95, 0.82, 0.36 }
+        local color = isFinished and UI_COLORS.objectiveFinished or UI_COLORS.objectiveUnfinished
 
         e.tex:ClearAllPoints()
         e.dot:ClearAllPoints()
         if isFinished then
             e.tex:SetPoint("CENTER", row.objFrame, "TOPLEFT", COL_MARKER_W / 2, -y - LINE_VCENTER)
-            e.tex:SetTexture("Interface\\RAIDFRAME\\ReadyCheck-Ready")
+            e.tex:SetTexture(UI_TEXTURES.checkmark)
             e.tex:Show()
             e.dot:Hide()
         else
             e.dot:SetPoint("CENTER", row.objFrame, "TOPLEFT", COL_MARKER_W / 2, -y - LINE_VCENTER)
             e.dot:SetJustifyH("CENTER")
             e.dot:SetText("•")
-            e.dot:SetTextColor(0.75, 0.75, 0.75)
+            e.dot:SetTextColor(unpack(UI_COLORS.objectiveDot))
             e.dot:Show()
             e.tex:Hide()
         end
@@ -1187,18 +1222,18 @@ local function CreateRow()
 
     local superBg = row:CreateTexture(nil, "BACKGROUND", nil, -2)
     superBg:SetAllPoints(row)
-    superBg:SetColorTexture(1.0, 0.82, 0.0, 0.12)
+    superBg:SetColorTexture(unpack(UI_COLORS.superTrackBg))
     superBg:Hide()
     row.superBg = superBg
 
     local completeBg = row:CreateTexture(nil, "BACKGROUND")
     completeBg:SetAllPoints(row)
-    completeBg:SetColorTexture(0.12, 0.35, 0.15, 0.45)
+    completeBg:SetColorTexture(unpack(UI_COLORS.completedBg))
     completeBg:Hide()
     row.completeBg = completeBg
 
     local sep = row:CreateTexture(nil, "ARTWORK")
-    sep:SetColorTexture(1, 1, 1, 0.07)
+    sep:SetColorTexture(unpack(UI_COLORS.rowSeparator))
     sep:SetHeight(1)
     sep:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, -math.floor(ROW_GAP / 2))
     sep:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, -math.floor(ROW_GAP / 2))
@@ -1213,7 +1248,7 @@ local function CreateRow()
 
     local hover = btn:CreateTexture(nil, "BACKGROUND")
     hover:SetAllPoints(btn)
-    hover:SetColorTexture(1, 1, 1, 0.06)
+    hover:SetColorTexture(unpack(UI_COLORS.rowHover))
     hover:Hide()
 
     local TOP_CLUSTER_Y = 3
@@ -1221,7 +1256,7 @@ local function CreateRow()
     local arrow = btn:CreateTexture(nil, "OVERLAY")
     arrow:SetSize(14, 14)
     arrow:SetPoint("LEFT", btn, "LEFT", 3, TOP_CLUSTER_Y)
-    arrow:SetTexture("Interface\\Buttons\\UI-PlusButton-Up")
+    arrow:SetTexture(UI_TEXTURES.plusButton)
     row.arrow = arrow
 
     local track = CreateFrame("Button", nil, btn)
@@ -1231,20 +1266,20 @@ local function CreateRow()
 
     local ring = track:CreateTexture(nil, "ARTWORK")
     ring:SetAllPoints(track)
-    ring:SetTexture("Interface\\Buttons\\UI-RadioButton")
+    ring:SetTexture(UI_TEXTURES.radioButton)
     ring:SetTexCoord(0, 0.25, 0, 1)
     ring:SetVertexColor(0.75, 0.75, 0.78)
 
     local fill = track:CreateTexture(nil, "OVERLAY")
     fill:SetAllPoints(track)
-    fill:SetTexture("Interface\\Buttons\\UI-RadioButton")
+    fill:SetTexture(UI_TEXTURES.radioButton)
     fill:SetTexCoord(0.25, 0.5, 0, 1)
     fill:SetVertexColor(1.0, 0.82, 0.0)
     fill:Hide()
 
     local trackHover = track:CreateTexture(nil, "HIGHLIGHT")
     trackHover:SetAllPoints(track)
-    trackHover:SetTexture("Interface\\Buttons\\UI-RadioButton")
+    trackHover:SetTexture(UI_TEXTURES.radioButton)
     trackHover:SetTexCoord(0.5, 0.75, 0, 1)
     trackHover:SetBlendMode("ADD")
 
@@ -1273,12 +1308,12 @@ local function CreateRow()
     local completionIcon = btn:CreateTexture(nil, "OVERLAY")
     completionIcon:SetSize(14, 14)
     completionIcon:SetPoint("RIGHT", track, "LEFT", -4, 0)
-    completionIcon:SetTexture("Interface\\RAIDFRAME\\ReadyCheck-Ready")
+    completionIcon:SetTexture(UI_TEXTURES.checkmark)
     completionIcon:Hide()
     row.completionIcon = completionIcon
 
     local barBg = row:CreateTexture(nil, "ARTWORK")
-    barBg:SetColorTexture(0.22, 0.22, 0.24, 0.95)
+    barBg:SetColorTexture(unpack(UI_COLORS.barBg))
     barBg:SetHeight(BAR_HEIGHT)
     barBg:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 4, BAR_BOTTOM_PAD)
     barBg:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -4, BAR_BOTTOM_PAD)
@@ -1286,7 +1321,7 @@ local function CreateRow()
     row.barBg = barBg
 
     local barFill = row:CreateTexture(nil, "OVERLAY")
-    barFill:SetColorTexture(0.95, 0.82, 0.36, 0.9)
+    barFill:SetColorTexture(unpack(UI_COLORS.barFill))
     barFill:SetHeight(BAR_HEIGHT)
     barFill:SetPoint("LEFT", barBg, "LEFT", 0, 0)
     barFill:SetPoint("TOP", barBg, "TOP", 0, 0)
@@ -1311,9 +1346,9 @@ local function CreateRow()
         local clamped = math.min(math.max(pct or 0, 0), 1)
         self.barFill:SetWidth(math.max(1, w * clamped))
         if complete or clamped >= 1 then
-            self.barFill:SetColorTexture(0.35, 0.9, 0.35, 0.9)
+            self.barFill:SetColorTexture(unpack(UI_COLORS.barFillComplete))
         else
-            self.barFill:SetColorTexture(0.95, 0.82, 0.36, 0.9)
+            self.barFill:SetColorTexture(unpack(UI_COLORS.barFill))
         end
     end
 
@@ -1410,10 +1445,10 @@ local function CreateSectionHeader()
 
     local stripe = hdr:CreateTexture(nil, "BACKGROUND")
     stripe:SetAllPoints(hdr)
-    stripe:SetColorTexture(1, 1, 1, 0.14)
+    stripe:SetColorTexture(unpack(UI_COLORS.sectionStripe))
 
     local hdrSep = hdr:CreateTexture(nil, "ARTWORK")
-    hdrSep:SetColorTexture(1, 1, 1, 0.07)
+    hdrSep:SetColorTexture(unpack(UI_COLORS.sectionSeparator))
     hdrSep:SetHeight(1)
     hdrSep:SetPoint("BOTTOMLEFT", hdr, "BOTTOMLEFT", 0, -math.floor(ROW_GAP / 2))
     hdrSep:SetPoint("BOTTOMRIGHT", hdr, "BOTTOMRIGHT", 0, -math.floor(ROW_GAP / 2))
@@ -1421,12 +1456,12 @@ local function CreateSectionHeader()
 
     local hover = hdr:CreateTexture(nil, "HIGHLIGHT")
     hover:SetAllPoints(hdr)
-    hover:SetColorTexture(1, 1, 1, 0.07)
+    hover:SetColorTexture(unpack(UI_COLORS.sectionHover))
 
     local arrow = hdr:CreateTexture(nil, "OVERLAY")
     arrow:SetSize(12, 12)
     arrow:SetPoint("LEFT", hdr, "LEFT", 4, 0)
-    arrow:SetTexture("Interface\\Buttons\\UI-MinusButton-Up")
+    arrow:SetTexture(UI_TEXTURES.minusButton)
     hdr.arrow = arrow
 
     local title = hdr:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -1437,7 +1472,7 @@ local function CreateSectionHeader()
     local count = hdr:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     count:SetPoint("RIGHT", hdr, "RIGHT", -6, 0)
     count:SetJustifyH("RIGHT")
-    count:SetTextColor(0.85, 0.85, 0.85)
+    count:SetTextColor(unpack(UI_COLORS.sectionCount))
     hdr.count = count
 
     hdr:SetScript("OnClick", function(self)
@@ -1541,10 +1576,10 @@ local refreshImpl = function()
             local hdr = AcquireSection()
             hdr.classification = cls
             hdr.title:SetText(CLASSIFICATION_NAMES[cls] or ("Class " .. cls))
-            hdr.title:SetTextColor(1.0, 0.82, 0.0)
+            hdr.title:SetTextColor(unpack(UI_COLORS.sectionTitle))
             local collapsed = collapsedMap[cls] and true or false
             hdr.count:SetText(#list)
-            hdr.arrow:SetTexture(collapsed and "Interface\\Buttons\\UI-PlusButton-Up" or "Interface\\Buttons\\UI-MinusButton-Up")
+            hdr.arrow:SetTexture(collapsed and UI_TEXTURES.plusButton or UI_TEXTURES.minusButton)
             hdr:SetHeight(SECTION_HEIGHT)
             table.insert(activeSections, hdr)
             table.insert(layout, hdr)
@@ -1556,7 +1591,7 @@ local refreshImpl = function()
                     row.questID = q.questID
                     row.achievementID = nil
                     row.title:SetText(q.title)
-                    row.title:SetTextColor(1, 1, 1)
+                    row.title:SetTextColor(unpack(UI_COLORS.itemTitle))
                     if row.SetComplete then row:SetComplete(q.isComplete) end
                     local isSuper = superTracked == q.questID and superTracked ~= 0
                     if row.trackCheck then
@@ -1580,10 +1615,10 @@ local refreshImpl = function()
         local hdr = AcquireSection()
         hdr.classification = "achievements"
         hdr.title:SetText("Achievements")
-        hdr.title:SetTextColor(1.0, 0.82, 0.0)
+        hdr.title:SetTextColor(unpack(UI_COLORS.sectionTitle))
         local collapsed = collapsedMap["achievements"] and true or false
         hdr.count:SetText(#trackedAch)
-        hdr.arrow:SetTexture(collapsed and "Interface\\Buttons\\UI-PlusButton-Up" or "Interface\\Buttons\\UI-MinusButton-Up")
+        hdr.arrow:SetTexture(collapsed and UI_TEXTURES.plusButton or UI_TEXTURES.minusButton)
         hdr:SetHeight(SECTION_HEIGHT)
         table.insert(activeSections, hdr)
         table.insert(layout, hdr)
@@ -1600,7 +1635,7 @@ local refreshImpl = function()
                     row.achievementID = achID
                     row.questID = nil
                     row.title:SetText(name or ("Achievement " .. achID))
-                    row.title:SetTextColor(1, 1, 1)
+                    row.title:SetTextColor(unpack(UI_COLORS.itemTitle))
                     if row.SetComplete then row:SetComplete(completed) end
                     if row.trackCheck then row.trackCheck:Hide() end
                     local pct, hasAny = GetAchievementProgress(achID)
@@ -1618,10 +1653,10 @@ local refreshImpl = function()
         local hdr = AcquireSection()
         hdr.classification = "recipes"
         hdr.title:SetText("Crafting")
-        hdr.title:SetTextColor(1.0, 0.82, 0.0)
+        hdr.title:SetTextColor(unpack(UI_COLORS.sectionTitle))
         local collapsed = collapsedMap["recipes"] and true or false
         hdr.count:SetText(#trackedRecipes)
-        hdr.arrow:SetTexture(collapsed and "Interface\\Buttons\\UI-PlusButton-Up" or "Interface\\Buttons\\UI-MinusButton-Up")
+        hdr.arrow:SetTexture(collapsed and UI_TEXTURES.plusButton or UI_TEXTURES.minusButton)
         hdr:SetHeight(SECTION_HEIGHT)
         table.insert(activeSections, hdr)
         table.insert(layout, hdr)
@@ -1635,7 +1670,7 @@ local refreshImpl = function()
                 row.achievementID = nil
                 row.activityID = nil
                 row.title:SetText(GetRecipeName(recipeID))
-                row.title:SetTextColor(1, 1, 1)
+                row.title:SetTextColor(unpack(UI_COLORS.itemTitle))
                 if row.SetComplete then row:SetComplete(false) end
                 if row.trackCheck then row.trackCheck:Hide() end
                 local pct, hasAny = GetRecipeProgress(recipeID)
@@ -1652,10 +1687,10 @@ local refreshImpl = function()
         local hdr = AcquireSection()
         hdr.classification = "activities"
         hdr.title:SetText("Monthly")
-        hdr.title:SetTextColor(1.0, 0.82, 0.0)
+        hdr.title:SetTextColor(unpack(UI_COLORS.sectionTitle))
         local collapsed = collapsedMap["activities"] and true or false
         hdr.count:SetText(#trackedActivities)
-        hdr.arrow:SetTexture(collapsed and "Interface\\Buttons\\UI-PlusButton-Up" or "Interface\\Buttons\\UI-MinusButton-Up")
+        hdr.arrow:SetTexture(collapsed and UI_TEXTURES.plusButton or UI_TEXTURES.minusButton)
         hdr:SetHeight(SECTION_HEIGHT)
         table.insert(activeSections, hdr)
         table.insert(layout, hdr)
@@ -1673,7 +1708,7 @@ local refreshImpl = function()
                     row.initiativeID = nil
                     local name = info.activityName or info.name or ("Activity " .. actID)
                     row.title:SetText(name)
-                    row.title:SetTextColor(1, 1, 1)
+                    row.title:SetTextColor(unpack(UI_COLORS.itemTitle))
                     if row.SetComplete then row:SetComplete(info.completed) end
                     if row.trackCheck then row.trackCheck:Hide() end
                     local pct, hasAny = GetActivityProgress(actID)
@@ -1691,10 +1726,10 @@ local refreshImpl = function()
         local hdr = AcquireSection()
         hdr.classification = "initiatives"
         hdr.title:SetText("Endeavours")
-        hdr.title:SetTextColor(1.0, 0.82, 0.0)
+        hdr.title:SetTextColor(unpack(UI_COLORS.sectionTitle))
         local collapsed = collapsedMap["initiatives"] and true or false
         hdr.count:SetText(#trackedInitiatives)
-        hdr.arrow:SetTexture(collapsed and "Interface\\Buttons\\UI-PlusButton-Up" or "Interface\\Buttons\\UI-MinusButton-Up")
+        hdr.arrow:SetTexture(collapsed and UI_TEXTURES.plusButton or UI_TEXTURES.minusButton)
         hdr:SetHeight(SECTION_HEIGHT)
         table.insert(activeSections, hdr)
         table.insert(layout, hdr)
@@ -1710,7 +1745,7 @@ local refreshImpl = function()
                 row.activityID = nil
                 local info = GetInitiativeTaskInfo(taskID)
                 row.title:SetText(GetInitiativeTaskName(taskID))
-                row.title:SetTextColor(1, 1, 1)
+                row.title:SetTextColor(unpack(UI_COLORS.itemTitle))
                 if row.SetComplete then row:SetComplete(info and info.completed) end
                 if row.trackCheck then row.trackCheck:Hide() end
                 local pct, hasAny = GetInitiativeTaskProgress(taskID)
@@ -1812,11 +1847,11 @@ end
 local function ApplyFlatSkin(f)
     local bg = f:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints(f)
-    bg:SetColorTexture(0, 0, 0, 0.78)
+    bg:SetColorTexture(unpack(UI_COLORS.dialogBackdrop))
 
     local function edge(side)
         local t = f:CreateTexture(nil, "BORDER")
-        t:SetColorTexture(0.25, 0.25, 0.27, 1)
+        t:SetColorTexture(unpack(UI_COLORS.dialogBorder))
         if side == "top" then
             t:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
             t:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
@@ -1989,15 +2024,15 @@ local function BuildUI()
     zoneText = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     zoneText:SetPoint("TOPLEFT", titleText, "BOTTOMLEFT", 0, -2)
     zoneText:SetJustifyH("LEFT")
-    zoneText:SetTextColor(0.7, 0.7, 0.7)
+    zoneText:SetTextColor(unpack(UI_COLORS.zoneText))
 
     local cogBtn = CreateFrame("Button", nil, header)
     cogBtn:SetSize(16, 16)
     cogBtn:SetPoint("RIGHT", header, "TOPRIGHT", 0, -11)
-    cogBtn:SetNormalTexture("Interface\\Buttons\\UI-OptionsButton")
+    cogBtn:SetNormalTexture(UI_TEXTURES.cog)
     local cogHover = cogBtn:CreateTexture(nil, "HIGHLIGHT")
     cogHover:SetAllPoints(cogBtn)
-    cogHover:SetColorTexture(1, 1, 1, 0.2)
+    cogHover:SetColorTexture(unpack(UI_COLORS.cogHover))
     cogBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
         GameTooltip:AddLine("Settings")
@@ -2036,13 +2071,13 @@ local function BuildUI()
     local collapseAllText = collapseAllBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     collapseAllText:SetPoint("RIGHT", collapseAllBtn, "RIGHT", 0, 0)
     collapseAllText:SetText("collapse all")
-    collapseAllText:SetTextColor(0.55, 0.55, 0.6)
+    collapseAllText:SetTextColor(unpack(UI_COLORS.collapseAllText))
     collapseAllBtn:SetSize((collapseAllText:GetStringWidth() or 60) + 4, 14)
     collapseAllBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -8, -22)
     collapseAllBtn:SetFrameLevel((header:GetFrameLevel() or frame:GetFrameLevel()) + 5)
     collapseAllBtn:SetHitRectInsets(-3, -3, -3, -3)
-    collapseAllBtn:SetScript("OnEnter", function() collapseAllText:SetTextColor(1, 1, 1) end)
-    collapseAllBtn:SetScript("OnLeave", function() collapseAllText:SetTextColor(0.55, 0.55, 0.6) end)
+    collapseAllBtn:SetScript("OnEnter", function() collapseAllText:SetTextColor(unpack(UI_COLORS.collapseAllHover)) end)
+    collapseAllBtn:SetScript("OnLeave", function() collapseAllText:SetTextColor(unpack(UI_COLORS.collapseAllText)) end)
     collapseAllBtn:SetScript("OnClick", function()
         BooshiesQuestLogDB.expandedKeys = {}
         BooshiesQuestLogDB.collapsedSections = BooshiesQuestLogDB.collapsedSections or {}
@@ -2091,11 +2126,11 @@ local function BuildUI()
 
     local grip = resizer:CreateTexture(nil, "OVERLAY")
     grip:SetAllPoints(resizer)
-    grip:SetColorTexture(0.45, 0.45, 0.48, 0.55)
+    grip:SetColorTexture(unpack(UI_COLORS.resizeGrip))
 
     local gripHover = resizer:CreateTexture(nil, "HIGHLIGHT")
     gripHover:SetAllPoints(resizer)
-    gripHover:SetColorTexture(1, 1, 1, 0.25)
+    gripHover:SetColorTexture(unpack(UI_COLORS.resizeGripHover))
 
     local function dragUpdate(self)
         local cur = select(2, GetCursorPosition()) / UIParent:GetEffectiveScale()
