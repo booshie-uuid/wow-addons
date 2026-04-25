@@ -1201,11 +1201,14 @@ end
 -- =============================================================================
 
 local function OpenQuestDetails(questID)
+
     if not questID then return end
+
     if _G.QuestMapFrame_OpenToQuestDetails then
         pcall(_G.QuestMapFrame_OpenToQuestDetails, questID)
         return
     end
+
     if _G.QuestMapFrame_ShowQuestDetails then
         if WorldMapFrame and not WorldMapFrame:IsShown() then
             pcall(ShowUIPanel, WorldMapFrame)
@@ -1213,60 +1216,78 @@ local function OpenQuestDetails(questID)
         pcall(_G.QuestMapFrame_ShowQuestDetails, questID)
         return
     end
+
     local logIndex = C_QuestLog and C_QuestLog.GetLogIndexForQuestID
         and C_QuestLog.GetLogIndexForQuestID(questID) or nil
     if logIndex and _G.QuestLogPopupDetailFrame_Show then
         pcall(_G.QuestLogPopupDetailFrame_Show, logIndex)
     end
+
 end
 
 local function OpenMonthlyActivities()
+
     if C_AddOns and C_AddOns.LoadAddOn then
         pcall(C_AddOns.LoadAddOn, "Blizzard_EncounterJournal")
     elseif _G.LoadAddOn then
         pcall(_G.LoadAddOn, "Blizzard_EncounterJournal")
     end
+
     if _G.EncounterJournal and not EncounterJournal:IsShown() then
         pcall(ShowUIPanel, EncounterJournal)
     elseif _G.ToggleEncounterJournal then
         pcall(_G.ToggleEncounterJournal)
     end
+
 end
 
 local function OpenEndeavours(taskID)
+
     if C_AddOns and C_AddOns.LoadAddOn then
         pcall(C_AddOns.LoadAddOn, "Blizzard_HousingDashboard")
     elseif _G.LoadAddOn then
         pcall(_G.LoadAddOn, "Blizzard_HousingDashboard")
     end
+
     local f = _G.HousingDashboardFrame
     if not f or not f.Show then return end
+
     pcall(ShowUIPanel, f)
+
     if taskID and f.OpenInitiativesFrameToTaskID then
         pcall(f.OpenInitiativesFrameToTaskID, f, taskID)
     end
+
 end
 
 local function OpenRecipeDetails(recipeID)
+
     if not recipeID then return end
+
     if C_TradeSkillUI and C_TradeSkillUI.OpenRecipe then
         pcall(C_TradeSkillUI.OpenRecipe, recipeID)
     end
+
 end
 
 local function OpenAchievementDetails(achID)
+
     if not achID then return end
+
     if _G.AchievementFrame_LoadUI then
         pcall(_G.AchievementFrame_LoadUI)
     end
+
     if _G.AchievementFrame and not AchievementFrame:IsShown() then
         pcall(ShowUIPanel, AchievementFrame)
     end
+
     if _G.AchievementFrame_SelectAchievement then
         pcall(_G.AchievementFrame_SelectAchievement, achID)
     elseif _G.OpenAchievementFrameToAchievement then
         pcall(_G.OpenAchievementFrameToAchievement, achID)
     end
+
 end
 
 
@@ -1281,27 +1302,35 @@ local function tryCall(fn, ...)
 end
 
 local function UntrackRow(row)
+
     if not row then return end
+
     if row.questID then
         if C_QuestLog then
             tryCall(C_QuestLog.RemoveQuestWatch, row.questID)
             tryCall(C_QuestLog.RemoveWorldQuestWatch, row.questID)
         end
+
     elseif row.achievementID then
         local id = row.achievementID
         local t = Enum and Enum.ContentTrackingType and Enum.ContentTrackingType.Achievement
         local stopType = (Enum and Enum.ContentTrackingStopType and Enum.ContentTrackingStopType.Player) or 2
+
         if C_ContentTracking and C_ContentTracking.StopTracking and t then
             tryCall(C_ContentTracking.StopTracking, t, id, stopType)
         end
         tryCall(_G.RemoveTrackedAchievement, id)
+
     elseif row.recipeID then
         if C_TradeSkillUI and C_TradeSkillUI.SetRecipeTracked then
             tryCall(C_TradeSkillUI.SetRecipeTracked, row.recipeID, false, false)
             tryCall(C_TradeSkillUI.SetRecipeTracked, row.recipeID, false, true)
         end
+
     elseif row.activityID then
         if C_PerksActivities then
+            -- Probe API for an explicit untrack/remove function and stop on first
+            -- success, since the exact name varies across game versions.
             for fname, fn in pairs(C_PerksActivities) do
                 if type(fn) == "function" then
                     local lk = fname:lower()
@@ -1310,6 +1339,9 @@ local function UntrackRow(row)
                     end
                 end
             end
+
+            -- Also call any SetXxxTracked-style toggle with false, in case the API
+            -- exposes a setter rather than a remove.
             for fname, fn in pairs(C_PerksActivities) do
                 if type(fn) == "function" then
                     local lk = fname:lower()
@@ -1319,11 +1351,13 @@ local function UntrackRow(row)
                 end
             end
         end
+
     elseif row.initiativeID then
         if C_NeighborhoodInitiative then
             tryCall(C_NeighborhoodInitiative.RemoveTrackedInitiativeTask, row.initiativeID)
         end
     end
+
 end
 
 
@@ -1332,11 +1366,14 @@ end
 -- =============================================================================
 
 local function DumpQuestMetadata(questID)
+
     if not questID then return end
+
     local function p(fmt, ...) print(("|cff4fc3f7BQL|r " .. fmt):format(...)) end
 
     p("--- Quest %d ---", questID)
     p("title: %s", tostring(C_QuestLog.GetTitleForQuestID(questID)))
+
     local logIndex = C_QuestLog.GetLogIndexForQuestID(questID)
     p("logIndex: %s", tostring(logIndex))
 
@@ -1363,9 +1400,13 @@ local function DumpQuestMetadata(questID)
 
     local onThisMap = false
     local questsOnMap = mapID and C_QuestLog.GetQuestsOnMap(mapID) or nil
+
     if questsOnMap then
         for _, q in ipairs(questsOnMap) do
-            if q.questID == questID then onThisMap = true; break end
+            if q.questID == questID then
+                onThisMap = true
+                break
+            end
         end
     end
     p("POI on current map: %s", tostring(onThisMap))
@@ -1387,10 +1428,13 @@ local function DumpQuestMetadata(questID)
             p("  tag.%s = %s", k, tostring(tagInfo[k]))
         end
     end
+
 end
 
 local function DumpAchievementMetadata(achID)
+
     if not achID then return end
+
     local function p(fmt, ...) print(("|cff4fc3f7BQL|r " .. fmt):format(...)) end
 
     p("--- Achievement %d ---", achID)
@@ -1455,6 +1499,7 @@ local function DumpAchievementMetadata(achID)
             end
         end
     end
+
 end
 
 
@@ -2325,30 +2370,38 @@ local BLIZZARD_QUEST_MODULES = {
 local hookedBlizzardModules = {}
 
 local function attachSquashHooks(m)
+
     if hookedBlizzardModules[m] then return end
     hookedBlizzardModules[m] = true
+
     local function squash(self)
         if self._bqlForceHidden then
             self:Hide()
             pcall(self.SetHeight, self, 0.01)
         end
     end
+
     if m.HookScript then
         m:HookScript("OnShow", squash)
         m:HookScript("OnSizeChanged", squash)
     end
+
 end
 
 local function RelayoutBlizzardTracker()
+
     if _G.ObjectiveTrackerManager and ObjectiveTrackerManager.UpdateAll then
         pcall(ObjectiveTrackerManager.UpdateAll, ObjectiveTrackerManager)
     elseif ObjectiveTrackerFrame and ObjectiveTrackerFrame.Update then
         pcall(ObjectiveTrackerFrame.Update, ObjectiveTrackerFrame)
     end
+
 end
 
 local function ApplyBlizzardTrackerState()
+
     local shouldHide = BooshiesQuestLogDB.hideBlizzardTracker and true or false
+
     for _, name in ipairs(BLIZZARD_QUEST_MODULES) do
         local m = _G[name]
         if m then
@@ -2364,9 +2417,11 @@ local function ApplyBlizzardTrackerState()
     end
 
     RelayoutBlizzardTracker()
+
 end
 
 local function ApplyFlatSkin(f)
+
     local bg = f:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints(f)
     bg:SetColorTexture(unpack(UI_COLORS.dialogBackdrop))
@@ -2392,7 +2447,12 @@ local function ApplyFlatSkin(f)
             t:SetWidth(1)
         end
     end
-    edge("top"); edge("bottom"); edge("left"); edge("right")
+
+    edge("top")
+    edge("bottom")
+    edge("left")
+    edge("right")
+
 end
 
 
@@ -2409,7 +2469,9 @@ local SETTINGS_SPEC = {
 }
 
 local function BuildSettingsUI()
+
     if settingsFrame then return end
+
     settingsFrame = CreateFrame("Frame", "BooshiesQuestLogSettingsFrame", UIParent)
     settingsFrame:SetFrameStrata("MEDIUM")
     settingsFrame:SetMovable(true)
@@ -2424,6 +2486,7 @@ local function BuildSettingsUI()
 
     settingsFrame.pending = {}
     settingsFrame.rows = {}
+
     local y = HEADER_OFFSET
     for i, spec in ipairs(SETTINGS_SPEC) do
         local row = CreateFrame("Frame", nil, settingsFrame)
@@ -2468,46 +2531,64 @@ local function BuildSettingsUI()
 
     local totalHeight = HEADER_OFFSET + (#SETTINGS_SPEC * 24) + 44
     settingsFrame:SetSize(BooshiesQuestLogDB.width or 280, totalHeight)
+
 end
 
 function ShowSettings()
+
     BuildSettingsUI()
     if not frame then return end
+
     local right = frame:GetRight()
     local top = frame:GetTop()
+
     if right and top then
         local uiRight = UIParent:GetRight() or 0
         local uiTop = UIParent:GetTop() or 0
         settingsFrame:ClearAllPoints()
         settingsFrame:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", right - uiRight, top - uiTop)
     end
+
     settingsFrame:SetWidth(frame:GetWidth())
+
     for _, row in ipairs(settingsFrame.rows) do
         row.checkbox:SetChecked(BooshiesQuestLogDB[row.key] and true or false)
     end
+
     wipe(settingsFrame.pending)
     frame:Hide()
     settingsFrame:Show()
+
 end
 
 function HideSettings()
+
     if settingsFrame then settingsFrame:Hide() end
     if frame then frame:Show() end
     if Refresh then Refresh() end
+
 end
 
 function ApplySettings()
-    if not settingsFrame then HideSettings(); return end
+
+    if not settingsFrame then
+        HideSettings()
+        return
+    end
+
     for key, val in pairs(settingsFrame.pending) do
         BooshiesQuestLogDB[key] = val
     end
     wipe(settingsFrame.pending)
+
     if frame and frame.filterBtn then
         frame.filterBtn:SetChecked(BooshiesQuestLogDB.filterByZone)
     end
+
     ApplyBlizzardTrackerState()
     HideSettings()
     Refresh()
+
 end
 
 
@@ -2536,7 +2617,10 @@ local function BuildHeader()
     header:SetHeight(30)
     header:RegisterForDrag("LeftButton")
     header:SetScript("OnDragStart", function() frame:StartMoving() end)
-    header:SetScript("OnDragStop", function() frame:StopMovingOrSizing(); SavePosition() end)
+    header:SetScript("OnDragStop", function()
+        frame:StopMovingOrSizing()
+        SavePosition()
+    end)
     frame.header = header
 
     titleText = header:CreateFontString(nil, "OVERLAY", "GameFontNormalMed1")
@@ -2551,7 +2635,10 @@ local function BuildHeader()
     titleBtn:RegisterForClicks("LeftButtonUp")
     titleBtn:RegisterForDrag("LeftButton")
     titleBtn:SetScript("OnDragStart", function() frame:StartMoving() end)
-    titleBtn:SetScript("OnDragStop", function() frame:StopMovingOrSizing(); SavePosition() end)
+    titleBtn:SetScript("OnDragStop", function()
+        frame:StopMovingOrSizing()
+        SavePosition()
+    end)
     titleBtn:SetScript("OnClick", function()
         BooshiesQuestLogDB.collapsed = not BooshiesQuestLogDB.collapsed
         Refresh()
@@ -2736,22 +2823,29 @@ end
 -- =============================================================================
 
 local function UpdateSuperTrackState()
+
     local current = C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID and C_SuperTrack.GetSuperTrackedQuestID() or 0
+
     for _, row in ipairs(activeRows) do
         local isSuper = row.questID and row.questID == current and current ~= 0
         if row.trackCheck then row.trackCheck:SetChecked(isSuper) end
         if row.superBg then row.superBg:SetShown(isSuper and true or false) end
     end
+
 end
 
 ToggleSuperTrack = function(questID)
+
     if not questID or not C_SuperTrack then return end
+
     local cur = C_SuperTrack.GetSuperTrackedQuestID and C_SuperTrack.GetSuperTrackedQuestID() or 0
+
     if cur == questID then
         C_SuperTrack.SetSuperTrackedQuestID(0)
     else
         C_SuperTrack.SetSuperTrackedQuestID(questID)
     end
+
 end
 
 
@@ -2760,13 +2854,17 @@ end
 -- =============================================================================
 
 local pending = false
+
 local function Reschedule()
+
     if pending then return end
     pending = true
+
     C_Timer.After(0.05, function()
         pending = false
         safeCall("Reschedule", Refresh)
     end)
+
 end
 
 local REQUIRED_EVENTS = {
@@ -2809,6 +2907,7 @@ for _, e in ipairs(OPTIONAL_EVENTS) do pcall(ev.RegisterEvent, ev, e) end
 
 ev:SetScript("OnEvent", function(self, event, arg1)
     safeCall("OnEvent:" .. tostring(event), function()
+
         if event == "ADDON_LOADED" then
             if arg1 == ADDON_NAME then
                 InitDB()
@@ -2816,20 +2915,26 @@ ev:SetScript("OnEvent", function(self, event, arg1)
                     pcall(C_NeighborhoodInitiative.RequestNeighborhoodInitiativeInfo)
                 end
             end
+
         elseif event == "PLAYER_LOGIN" then
             BuildUI()
             ApplyBlizzardTrackerState()
             Reschedule()
+
         elseif event == "PLAYER_ENTERING_WORLD" then
             ApplyBlizzardTrackerState()
             Reschedule()
+
         elseif event == "UNIT_QUEST_LOG_CHANGED" then
             if arg1 == "player" then Reschedule() end
+
         elseif event == "SUPER_TRACKING_CHANGED" then
             UpdateSuperTrackState()
+
         else
             Reschedule()
         end
+
     end)
 end)
 
