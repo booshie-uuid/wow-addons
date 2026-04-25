@@ -106,6 +106,8 @@ local DEFAULTS = {
     collapsed = false,
     helpShown = false,
     lockPosition = false,
+    hideBorder = false,
+    backdropAlpha = 0.78,
 }
 
 local CLASSIFICATION_NAMES = {
@@ -2646,12 +2648,18 @@ local function ApplyBlizzardTrackerState()
 
 end
 
+-- Frames that have been skinned. Tracked so user-tweakable appearance settings
+-- (background opacity, outer border visibility) can be re-applied on the fly.
+local skinnedFrames = {}
+
 local function ApplyFlatSkin(f)
 
     local bg = f:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints(f)
     bg:SetColorTexture(unpack(UI_COLORS.dialogBackdrop))
+    f.backdrop = bg
 
+    local edges = {}
     local function edge(side)
         local t = f:CreateTexture(nil, "BORDER")
         t:SetColorTexture(unpack(UI_COLORS.dialogBorder))
@@ -2672,12 +2680,44 @@ local function ApplyFlatSkin(f)
             t:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 0)
             t:SetWidth(1)
         end
+        edges[side] = t
     end
 
     edge("top")
     edge("bottom")
     edge("left")
     edge("right")
+
+    f.edges = edges
+
+    table.insert(skinnedFrames, f)
+
+    -- Apply current user-tweakable settings now so the frame matches the
+    -- saved appearance immediately, not only after the next ApplySettings.
+    local r, g, b = unpack(UI_COLORS.dialogBackdrop)
+    bg:SetColorTexture(r, g, b, BooshiesQuestLogDB.backdropAlpha or UI_COLORS.dialogBackdrop[4])
+    for _, t in pairs(edges) do
+        t:SetShown(not BooshiesQuestLogDB.hideBorder)
+    end
+
+end
+
+local function ApplyAppearance()
+
+    local r, g, b = unpack(UI_COLORS.dialogBackdrop)
+    local alpha = BooshiesQuestLogDB.backdropAlpha or UI_COLORS.dialogBackdrop[4]
+    local showBorder = not BooshiesQuestLogDB.hideBorder
+
+    for _, f in ipairs(skinnedFrames) do
+        if f.backdrop then
+            f.backdrop:SetColorTexture(r, g, b, alpha)
+        end
+        if f.edges then
+            for _, t in pairs(f.edges) do
+                t:SetShown(showBorder)
+            end
+        end
+    end
 
 end
 
@@ -2692,6 +2732,9 @@ local SETTINGS_SPEC = {
     { key = "alwaysShowAchievements", label = "Always Show Achievements" },
     { key = "hideBlizzardTracker",    label = "Hide Blizzard Activity Tracker" },
     { key = "lockPosition",           label = "Lock Position" },
+    { key = "hideBorder",             label = "Hide Outer Border" },
+    { key = "backdropAlpha",          label = "Background Opacity",
+                                      type = "slider", min = 0, max = 1, step = 0.05 },
     { key = "debug",                  label = "Debug Mode" },
 }
 
@@ -2719,26 +2762,74 @@ local function BuildSettingsUI()
         local row = CreateFrame("Frame", nil, settingsFrame)
         row:SetPoint("TOPLEFT", settingsFrame, "TOPLEFT", 10, -y)
         row:SetPoint("TOPRIGHT", settingsFrame, "TOPRIGHT", -10, -y)
-        row:SetHeight(22)
-
-        local cb = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
-        cb:SetSize(20, 20)
-        cb:SetPoint("LEFT", row, "LEFT", 0, 0)
-        cb:SetScript("OnClick", function(self)
-            settingsFrame.pending[spec.key] = self:GetChecked() and true or false
-        end)
-
-        local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        label:SetPoint("LEFT", cb, "RIGHT", 4, 0)
-        label:SetPoint("RIGHT", row, "RIGHT", 0, 0)
-        label:SetJustifyH("LEFT")
-        label:SetWordWrap(true)
-        label:SetText(spec.label)
-
-        row.checkbox = cb
         row.key = spec.key
+
+        if spec.type == "slider" then
+            row:SetHeight(40)
+
+            local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            label:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+            label:SetText(spec.label)
+
+            local valueText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            valueText:SetPoint("TOPRIGHT", row, "TOPRIGHT", 0, 0)
+
+            local slider = CreateFrame("Slider", nil, row, "OptionsSliderTemplate")
+            slider:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 0, -4)
+            slider:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+            slider:SetMinMaxValues(spec.min, spec.max)
+            slider:SetValueStep(spec.step)
+            slider:SetObeyStepOnDrag(true)
+
+            -- Hide the template's built-in Low/High/Text labels so the row
+            -- can use a single right-aligned percentage display instead.
+            if slider.Low  then slider.Low:Hide()  end
+            if slider.High then slider.High:Hide() end
+            if slider.Text then slider.Text:Hide() end
+
+            local function updateValueText(v)
+                valueText:SetText(string.format("%d%%", math.floor((v or 0) * 100 + 0.5)))
+            end
+
+            slider:SetScript("OnValueChanged", function(self, value)
+                settingsFrame.pending[spec.key] = value
+                updateValueText(value)
+            end)
+
+            row.slider = slider
+            function row:setValue(v)
+                self.slider:SetValue(v or 0)
+                updateValueText(v)
+            end
+
+            y = y + 44
+
+        else
+            row:SetHeight(22)
+
+            local cb = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
+            cb:SetSize(20, 20)
+            cb:SetPoint("LEFT", row, "LEFT", 0, 0)
+            cb:SetScript("OnClick", function(self)
+                settingsFrame.pending[spec.key] = self:GetChecked() and true or false
+            end)
+
+            local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            label:SetPoint("LEFT", cb, "RIGHT", 4, 0)
+            label:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+            label:SetJustifyH("LEFT")
+            label:SetWordWrap(true)
+            label:SetText(spec.label)
+
+            row.checkbox = cb
+            function row:setValue(v)
+                self.checkbox:SetChecked(v and true or false)
+            end
+
+            y = y + 24
+        end
+
         settingsFrame.rows[i] = row
-        y = y + 24
     end
 
     local backBtn = CreateFrame("Button", nil, settingsFrame, "UIPanelButtonTemplate")
@@ -2763,8 +2854,8 @@ local function BuildSettingsUI()
     settingsFrame.helpBtn = helpBtn
     settingsFrame.applyBtn = applyBtn
 
-    local totalHeight = HEADER_OFFSET + (#SETTINGS_SPEC * 24) + 44
-    settingsFrame:SetSize(BooshiesQuestLogDB.width or 280, totalHeight)
+    -- y is the bottom of the last row; +44 reserves space for the bottom button row.
+    settingsFrame:SetSize(BooshiesQuestLogDB.width or 280, y + 44)
 
 end
 
@@ -2786,7 +2877,7 @@ function ShowSettings()
     settingsFrame:SetWidth(frame:GetWidth())
 
     for _, row in ipairs(settingsFrame.rows) do
-        row.checkbox:SetChecked(BooshiesQuestLogDB[row.key] and true or false)
+        row:setValue(BooshiesQuestLogDB[row.key])
     end
 
     wipe(settingsFrame.pending)
@@ -2820,6 +2911,7 @@ function ApplySettings()
     end
 
     ApplyBlizzardTrackerState()
+    ApplyAppearance()
     HideSettings()
     Refresh()
 
