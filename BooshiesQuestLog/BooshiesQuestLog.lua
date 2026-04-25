@@ -7,7 +7,7 @@ local ADDON_NAME = ...
 BooshiesQuestLogDB = BooshiesQuestLogDB or {}
 
 local observedErrors = {}
-local function safeCall(label, fn, ...)
+local function SafeCall(label, fn, ...)
 
     local ok, err = pcall(fn, ...)
 
@@ -54,7 +54,7 @@ end
 
 -- Probes WoW API records that ship the same data under different field
 -- names across game versions.
-local function firstNonEmptyField(obj, keys)
+local function FirstNonEmptyField(obj, keys)
 
     if type(obj) ~= "table" then return nil end
 
@@ -67,7 +67,7 @@ local function firstNonEmptyField(obj, keys)
 
 end
 
-local function tryAppendIDs(list, seen, fn, ...)
+local function TryAppendIDs(list, seen, fn, ...)
 
     local ok, ids = pcall(fn, ...)
     if not ok or type(ids) ~= "table" then return false end
@@ -258,7 +258,7 @@ local function SnapshotQuestLog()
 
 end
 
-local function addTaskEntry(snapshot, qid, source)
+local function AddTaskEntry(snapshot, qid, source)
 
     if not qid or snapshot[qid] then return end
 
@@ -281,7 +281,7 @@ local function AddTaskQuestsToSnapshot(snapshot, mapID)
         if ok and type(n) == "number" then
             for i = 1, n do
                 local ok2, qid = pcall(C_QuestLog.GetQuestIDForWorldQuestWatchIndex, i)
-                if ok2 then addTaskEntry(snapshot, qid, "fromWorldWatch") end
+                if ok2 then AddTaskEntry(snapshot, qid, "fromWorldWatch") end
             end
         end
     end
@@ -293,7 +293,7 @@ local function AddTaskQuestsToSnapshot(snapshot, mapID)
 
         if ok and type(list) == "table" then
             for _, t in ipairs(list) do
-                addTaskEntry(snapshot, t.questId or t.questID, "fromTaskAPI")
+                AddTaskEntry(snapshot, t.questId or t.questID, "fromTaskAPI")
             end
         end
     end
@@ -303,7 +303,7 @@ local function AddTaskQuestsToSnapshot(snapshot, mapID)
 
         if ok and type(list) == "table" then
             for _, t in ipairs(list) do
-                addTaskEntry(snapshot, t.questID, "fromPOI")
+                AddTaskEntry(snapshot, t.questID, "fromPOI")
             end
         end
     end
@@ -384,13 +384,13 @@ local function GetTrackedAchievementList()
     local list = {}
 
     if _G.GetTrackedAchievements then
-        tryAppendIDs(list, nil, function() return { GetTrackedAchievements() } end)
+        TryAppendIDs(list, nil, function() return { GetTrackedAchievements() } end)
     end
 
     if #list == 0 and C_ContentTracking and C_ContentTracking.GetTrackedIDs then
         local t = Enum and Enum.ContentTrackingType and Enum.ContentTrackingType.Achievement
         if t ~= nil then
-            tryAppendIDs(list, nil, C_ContentTracking.GetTrackedIDs, t)
+            TryAppendIDs(list, nil, C_ContentTracking.GetTrackedIDs, t)
         end
     end
 
@@ -476,8 +476,8 @@ local function GetTrackedRecipeList()
     if not C_TradeSkillUI or not C_TradeSkillUI.GetRecipesTracked then return list end
 
     local seen = {}
-    tryAppendIDs(list, seen, C_TradeSkillUI.GetRecipesTracked, false)
-    tryAppendIDs(list, seen, C_TradeSkillUI.GetRecipesTracked, true)
+    TryAppendIDs(list, seen, C_TradeSkillUI.GetRecipesTracked, false)
+    TryAppendIDs(list, seen, C_TradeSkillUI.GetRecipesTracked, true)
 
     return list
 
@@ -604,7 +604,7 @@ local function GetTrackedMonthlyActivities()
     local list = {}
 
     if C_PerksActivities and C_PerksActivities.GetTrackedPerksActivities then
-        if tryAppendIDs(list, nil, C_PerksActivities.GetTrackedPerksActivities) then
+        if TryAppendIDs(list, nil, C_PerksActivities.GetTrackedPerksActivities) then
             return list
         end
     end
@@ -664,7 +664,7 @@ local function GetTrackedInitiativeTasks()
     if not C_NeighborhoodInitiative then return list end
 
     if C_NeighborhoodInitiative.GetTrackedInitiativeTasks then
-        if tryAppendIDs(list, nil, C_NeighborhoodInitiative.GetTrackedInitiativeTasks) then
+        if TryAppendIDs(list, nil, C_NeighborhoodInitiative.GetTrackedInitiativeTasks) then
             return list
         end
     end
@@ -709,7 +709,7 @@ local function GetInitiativeTaskObjectives(id)
     if not info then return {} end
 
     local list = {}
-    local criteria = firstNonEmptyField(info, { "criteriaList", "requirementsList", "objectives", "conditions" })
+    local criteria = FirstNonEmptyField(info, { "criteriaList", "requirementsList", "objectives", "conditions" })
 
     if criteria then
         for _, c in ipairs(criteria) do
@@ -777,7 +777,7 @@ local function GetActivityObjectives(id)
     if not info then return {} end
 
     local list = {}
-    local criteria = firstNonEmptyField(info, { "criteriaList", "requirementsList", "conditions" })
+    local criteria = FirstNonEmptyField(info, { "criteriaList", "requirementsList", "conditions" })
 
     if criteria then
         for _, c in ipairs(criteria) do
@@ -866,7 +866,8 @@ local DEFAULT_MAX_HEIGHT = 500
 -- Frame References (assigned in BuildUI)
 local frame, titleText, zoneText, content, scrollFrame, settingsFrame
 
--- Forward Declarations (assigned later in the file)
+-- Forward declarations - earlier-defined functions close over these and
+-- resolve them at call time, so the actual values can be assigned later.
 local ToggleSuperTrack
 local Refresh
 
@@ -939,14 +940,14 @@ local function RelayoutLayout(layout)
     local trailingGap = 0
 
     for i, item in ipairs(layout) do
-        local isSection = item._kind == "section"
+        local isSection = item.itemKind == "section"
 
         if not isSection and not item.expanded then item:SetHeight(ROW_HEIGHT) end
 
         if item.separator then
-            if item._kind == "section" then
+            if item.itemKind == "section" then
                 local nextItem = layout[i + 1]
-                local hasContentBelow = nextItem and nextItem._kind ~= "section"
+                local hasContentBelow = nextItem and nextItem.itemKind ~= "section"
                 item.separator:SetShown(hasContentBelow)
             else
                 item.separator:SetShown(true)
@@ -1000,9 +1001,8 @@ local function RelayoutLayout(layout)
 
 end
 
--- Picks the smallest scroll change that brings `child` fully into view: aligns
--- to the top edge if scrolling up, to the bottom edge if scrolling down. No-op
--- if the child is already fully visible.
+-- Aligns to the top edge if scrolling up, bottom if down. No-op if the child
+-- is already fully visible.
 local function ScrollIntoView(child, padding)
 
     if not child or not scrollFrame or not content then return end
@@ -1110,8 +1110,7 @@ local function FetchObjectivesFor(row)
 
 end
 
--- Splits each objective into its description + count parts and tracks the
--- widest count string so the description column can be aligned.
+-- The widest count string is tracked so descriptions align in a column.
 local function MeasureObjectiveParts(objectives)
 
     local parts = {}
@@ -1152,8 +1151,7 @@ end
 -- player there's nothing left to do but hand it in.
 local READY_TO_TURN_IN_PART = { desc = "Ready to turn in", count = nil, finished = true }
 
--- Positions one obj-line entry within `row.objFrame` at vertical offset `y`,
--- using `cols` for column widths and offsets. Returns the next y position.
+-- Returns the y position for the next row to use.
 local function LayoutObjectiveRow(row, e, y, part, cols)
 
     local isFinished = part.finished
@@ -1199,9 +1197,8 @@ local function LayoutObjectiveRow(row, e, y, part, cols)
 
 end
 
--- Lazy-creates one obj-line entry (texture + dot/count/desc font strings) the
--- first time index `i` is requested for this row, then returns it. Subsequent
--- calls return the same entry from the pool.
+-- Each entry holds a texture + dot/count/desc font strings, pooled by index
+-- per row.
 local function EnsureObjEntry(row, i)
 
     local e = row.objLines[i]
@@ -1225,8 +1222,7 @@ local function EnsureObjEntry(row, i)
 
 end
 
--- Lazy-creates `row.objFrame` (and the empty `row.objLines` pool) on first
--- expansion, then anchors and shows it at the chosen width.
+-- Initialises the empty `row.objLines` pool on first expansion as a side effect.
 local function EnsureObjFrame(row, objW)
 
     if not row.objFrame then
@@ -1241,8 +1237,8 @@ local function EnsureObjFrame(row, objW)
 
 end
 
--- Hides pooled obj-line entries past `fromIdx`. Used after rendering so a row
--- that previously had more objectives doesn't leave stale entries visible.
+-- Called after rendering so a previously-larger row doesn't leave stale
+-- entries visible.
 local function HideTrailingObjLines(row, fromIdx)
 
     for i = fromIdx + 1, #row.objLines do
@@ -1391,7 +1387,7 @@ end
 -- UNTRACK
 -- =============================================================================
 
-local function tryCall(fn, ...)
+local function TryCall(fn, ...)
     if type(fn) ~= "function" then return false end
     local ok = pcall(fn, ...)
     return ok
@@ -1403,8 +1399,8 @@ local function UntrackRow(row)
 
     if row.questID then
         if C_QuestLog then
-            tryCall(C_QuestLog.RemoveQuestWatch, row.questID)
-            tryCall(C_QuestLog.RemoveWorldQuestWatch, row.questID)
+            TryCall(C_QuestLog.RemoveQuestWatch, row.questID)
+            TryCall(C_QuestLog.RemoveWorldQuestWatch, row.questID)
         end
 
     elseif row.achievementID then
@@ -1413,14 +1409,14 @@ local function UntrackRow(row)
         local stopType = (Enum and Enum.ContentTrackingStopType and Enum.ContentTrackingStopType.Player) or 2
 
         if C_ContentTracking and C_ContentTracking.StopTracking and t then
-            tryCall(C_ContentTracking.StopTracking, t, id, stopType)
+            TryCall(C_ContentTracking.StopTracking, t, id, stopType)
         end
-        tryCall(_G.RemoveTrackedAchievement, id)
+        TryCall(_G.RemoveTrackedAchievement, id)
 
     elseif row.recipeID then
         if C_TradeSkillUI and C_TradeSkillUI.SetRecipeTracked then
-            tryCall(C_TradeSkillUI.SetRecipeTracked, row.recipeID, false, false)
-            tryCall(C_TradeSkillUI.SetRecipeTracked, row.recipeID, false, true)
+            TryCall(C_TradeSkillUI.SetRecipeTracked, row.recipeID, false, false)
+            TryCall(C_TradeSkillUI.SetRecipeTracked, row.recipeID, false, true)
         end
 
     elseif row.activityID then
@@ -1431,7 +1427,7 @@ local function UntrackRow(row)
                 if type(fn) == "function" then
                     local lk = fname:lower()
                     if lk:find("untrack") or (lk:find("remove") and (lk:find("track") or lk:find("activit"))) then
-                        if tryCall(fn, row.activityID) then break end
+                        if TryCall(fn, row.activityID) then break end
                     end
                 end
             end
@@ -1442,7 +1438,7 @@ local function UntrackRow(row)
                 if type(fn) == "function" then
                     local lk = fname:lower()
                     if lk:find("^set") and lk:find("track") then
-                        tryCall(fn, row.activityID, false)
+                        TryCall(fn, row.activityID, false)
                     end
                 end
             end
@@ -1450,7 +1446,7 @@ local function UntrackRow(row)
 
     elseif row.initiativeID then
         if C_NeighborhoodInitiative then
-            tryCall(C_NeighborhoodInitiative.RemoveTrackedInitiativeTask, row.initiativeID)
+            TryCall(C_NeighborhoodInitiative.RemoveTrackedInitiativeTask, row.initiativeID)
         end
     end
 
@@ -1658,27 +1654,38 @@ end
 -- ROW LIFECYCLE
 -- =============================================================================
 
+-- Prefixes for the strings returned by RowKey, used to identify a row across
+-- pool recycles (e.g. for the scroll pin and newly-tracked detection).
+local KEY_PREFIXES = {
+    quest       = "quest:",
+    achievement = "ach:",
+    recipe      = "recipe:",
+    activity    = "activity:",
+    initiative  = "initiative:",
+    section     = "section:",
+}
+
 local function RowKey(row)
 
     if not row then return nil end
 
     if row.itemKind == "achievement" and row.achievementID then
-        return "ach:" .. row.achievementID
+        return KEY_PREFIXES.achievement .. row.achievementID
     end
     if row.itemKind == "recipe" and row.recipeID then
-        return "recipe:" .. row.recipeID
+        return KEY_PREFIXES.recipe .. row.recipeID
     end
     if row.itemKind == "activity" and row.activityID then
-        return "activity:" .. row.activityID
+        return KEY_PREFIXES.activity .. row.activityID
     end
     if row.itemKind == "initiative" and row.initiativeID then
-        return "initiative:" .. row.initiativeID
+        return KEY_PREFIXES.initiative .. row.initiativeID
     end
     if row.questID then
-        return "quest:" .. row.questID
+        return KEY_PREFIXES.quest .. row.questID
     end
-    if row._kind == "section" and row.classification ~= nil then
-        return "section:" .. tostring(row.classification)
+    if row.itemKind == "section" and row.classification ~= nil then
+        return KEY_PREFIXES.section .. tostring(row.classification)
     end
 
     return nil
@@ -1689,13 +1696,13 @@ local function SectionForRowKey(key)
 
     if not key then return nil end
 
-    if key:sub(1, 4) == "ach:"        then return "achievements" end
-    if key:sub(1, 7) == "recipe:"     then return "recipes"      end
-    if key:sub(1, 9) == "activity:"   then return "activities"   end
-    if key:sub(1, 11) == "initiative:" then return "initiatives"  end
+    if key:sub(1, #KEY_PREFIXES.achievement) == KEY_PREFIXES.achievement then return "achievements" end
+    if key:sub(1, #KEY_PREFIXES.recipe)      == KEY_PREFIXES.recipe      then return "recipes"      end
+    if key:sub(1, #KEY_PREFIXES.activity)    == KEY_PREFIXES.activity    then return "activities"   end
+    if key:sub(1, #KEY_PREFIXES.initiative)  == KEY_PREFIXES.initiative  then return "initiatives"  end
 
-    if key:sub(1, 6) == "quest:" then
-        local qid = tonumber(key:sub(7))
+    if key:sub(1, #KEY_PREFIXES.quest) == KEY_PREFIXES.quest then
+        local qid = tonumber(key:sub(#KEY_PREFIXES.quest + 1))
         if qid then return GetClassification(qid) end
     end
 
@@ -2063,7 +2070,7 @@ local function CreateSectionHeader()
 
     local hdr = CreateFrame("Button", nil, content)
     hdr:SetHeight(SECTION_HEIGHT)
-    hdr._kind = "section"
+    hdr.itemKind = "section"
     hdr:RegisterForClicks("LeftButtonUp")
 
     local stripe = hdr:CreateTexture(nil, "BACKGROUND")
@@ -2567,7 +2574,7 @@ local function RefreshUI()
 
 end
 
-Refresh = function() safeCall("Refresh", RefreshUI) end
+Refresh = function() SafeCall("Refresh", RefreshUI) end
 
 
 -- =============================================================================
@@ -2587,7 +2594,7 @@ local BLIZZARD_QUEST_MODULES = {
 
 local hookedBlizzardModules = {}
 
-local function attachSquashHooks(m)
+local function AttachSquashHooks(m)
 
     if hookedBlizzardModules[m] then return end
     hookedBlizzardModules[m] = true
@@ -2624,7 +2631,7 @@ local function ApplyBlizzardTrackerState()
         local m = _G[name]
         if m then
             m._bqlForceHidden = shouldHide
-            attachSquashHooks(m)
+            AttachSquashHooks(m)
             if shouldHide then
                 if m.Hide then pcall(m.Hide, m) end
                 if m.SetHeight then pcall(m.SetHeight, m, 0.0) end
@@ -3169,7 +3176,7 @@ local function Reschedule()
 
     C_Timer.After(0.05, function()
         pending = false
-        safeCall("Reschedule", Refresh)
+        SafeCall("Reschedule", Refresh)
     end)
 
 end
@@ -3213,7 +3220,7 @@ for _, e in ipairs(REQUIRED_EVENTS) do ev:RegisterEvent(e) end
 for _, e in ipairs(OPTIONAL_EVENTS) do pcall(ev.RegisterEvent, ev, e) end
 
 ev:SetScript("OnEvent", function(self, event, arg1)
-    safeCall("OnEvent:" .. tostring(event), function()
+    SafeCall("OnEvent:" .. tostring(event), function()
 
         if event == "ADDON_LOADED" then
             if arg1 == ADDON_NAME then
