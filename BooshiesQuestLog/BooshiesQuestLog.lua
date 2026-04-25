@@ -105,6 +105,7 @@ local DEFAULTS = {
     collapsedSections = {},
     collapsed = false,
     helpShown = false,
+    lockPosition = false,
 }
 
 local CLASSIFICATION_NAMES = {
@@ -2690,6 +2691,7 @@ local SETTINGS_SPEC = {
     { key = "alwaysShowCampaign",     label = "Always Show Campaign Quests" },
     { key = "alwaysShowAchievements", label = "Always Show Achievements" },
     { key = "hideBlizzardTracker",    label = "Hide Blizzard Activity Tracker" },
+    { key = "lockPosition",           label = "Lock Position" },
     { key = "debug",                  label = "Debug Mode" },
 }
 
@@ -2930,7 +2932,9 @@ local function BuildHeader()
     header:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -4, -4)
     header:SetHeight(30)
     header:RegisterForDrag("LeftButton")
-    header:SetScript("OnDragStart", function() frame:StartMoving() end)
+    header:SetScript("OnDragStart", function()
+        if not BooshiesQuestLogDB.lockPosition then frame:StartMoving() end
+    end)
     header:SetScript("OnDragStop", function()
         frame:StopMovingOrSizing()
         SavePosition()
@@ -2948,7 +2952,9 @@ local function BuildHeader()
     titleBtn:SetFrameLevel(header:GetFrameLevel() + 2)
     titleBtn:RegisterForClicks("LeftButtonUp")
     titleBtn:RegisterForDrag("LeftButton")
-    titleBtn:SetScript("OnDragStart", function() frame:StartMoving() end)
+    titleBtn:SetScript("OnDragStart", function()
+        if not BooshiesQuestLogDB.lockPosition then frame:StartMoving() end
+    end)
     titleBtn:SetScript("OnDragStop", function()
         frame:StopMovingOrSizing()
         SavePosition()
