@@ -1,0 +1,17 @@
+## Interface: 120005
+## Title: Booshies Lua Sniffer
+## Notes: Enables real-time, interactive exploration of the WoW AddOn API and event system.
+## Version: 0.1.0
+## Author: Booshie
+## SavedVariables: BooshiesLuaSnifferDB
+## IconTexture: Interface\Icons\INV_Misc_Spyglass_02
+
+Core.lua
+EventManager.lua
+EventCapture.lua
+UI\Theme.lua
+UI\ListPanel.lua
+UI\InfoBox.lua
+UI\MainFrame.lua
+UI\EventList.lua
+UI\ExclusionList.lua
