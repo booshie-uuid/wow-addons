@@ -130,7 +130,7 @@ if rBottom < maxBottom then rBottom = maxBottom end
 
 ---
 
-## 5. Compact forms that stay compact
+### 5. Compact forms that stay compact
 
 Use commonsense when applying these rules. Creatin structures make more sense compact:
 
@@ -139,3 +139,56 @@ Use commonsense when applying these rules. Creatin structures make more sense co
 - Short loop bodies where expanding hurts more than it helps.
 
 Rule of thumb: **expand when it aids readability**. If a compact form is already easy to parse at a glance, leave it alone.
+
+---
+
+## Comments
+
+Comments exist to add information that isn't obvious from the code itself. The code shows *what*, comments should explain *why* (a constraint, a quirk, a non-obvious decision). But you should only feel the need to explain *why* if it is not obvious from the code.
+
+A comment is only worth keeping if removing it would leave a future reader with a question they can't answer by reading the code alone. Any comment that can be removed without confuse anyone should be deleted.
+
+### Worthwhile Comments
+
+- Bug workarounds, API quirks, version-dependent behaviour.
+- Non-obvious design decisions (why X over Y).
+- Contracts the code can't enforce on its own.
+- External context (a Blizzard event firing twice, a race condition, a load order dependency).
+
+### Worthless Comments
+
+- Restating the function signature ("Returns the value of X").
+- Narrating obvious code ("Loops over each item").
+- Lead-in sentences that summarise the very next line.
+- Pointers to "the recent X change" which rot fast and are already covered by the commit history.
+
+```lua
+-- Avoid: restates what the table name and contents already convey
+-- All texture asset paths used by the addon. Centralised so a future
+-- skin override is a one-line change.
+local UI_TEXTURES = { ... }
+
+-- Prefer: drop the comment entirely
+local UI_TEXTURES = { ... }
+
+-- Good: external context that isn't visible from the code
+-- Blizzard returns an empty `cstr` for single-step achievements; the
+-- achievement-level `description` field is the human-readable label.
+local function GetAchievementHeader(achID) ... end
+```
+
+### Section dividers in tables
+
+Short labels grouping entries inside a table or list aren't really comments — they're visual aids. Use **Title Case** for short headers.
+
+```lua
+local UI_COLORS = {
+    -- Row Backgrounds
+    superTrackBg = { 1.0,  0.82, 0.0,  0.12 },
+    completedBg  = { 0.12, 0.35, 0.15, 0.45 },
+
+    -- Progress Bar
+    barBg        = { 0.22, 0.22, 0.24, 0.95 },
+    -- ...
+}
+```
