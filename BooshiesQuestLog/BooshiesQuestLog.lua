@@ -233,12 +233,29 @@ local function GetTrackedAchievementList()
     return list
 end
 
+-- Returns the achievement's best display text plus its completion state.
+-- Blizzard's `GetAchievementCriteriaInfo` returns an empty `cstr` for single-
+-- step / "is the achievement itself" achievements (e.g. raid boss kills);
+-- the achievement-level `description` field is the human-readable label in
+-- those cases, with `name` as a last-resort fallback.
+local function GetAchievementHeader(achID)
+    if not GetAchievementInfo then return "", false end
+    local _, name, _, completed, _, _, _, description = GetAchievementInfo(achID)
+    local text = (description and description ~= "" and description) or name or ""
+    return text, completed and true or false
+end
+
 local function GetAchievementCriteriaList(achID)
-    if not _G.GetAchievementNumCriteria or not _G.GetAchievementCriteriaInfo then return {} end
-    local num = GetAchievementNumCriteria(achID) or 0
     local list = {}
+    if not _G.GetAchievementNumCriteria or not _G.GetAchievementCriteriaInfo then return list end
+    local num = GetAchievementNumCriteria(achID) or 0
+    local headerText
     for i = 1, num do
         local cstr, _, completed, quantity, reqQuantity = GetAchievementCriteriaInfo(achID, i)
+        if not cstr or cstr == "" then
+            headerText = headerText or GetAchievementHeader(achID)
+            cstr = headerText
+        end
         list[i] = {
             text = cstr or "",
             finished = completed and true or false,
@@ -246,20 +263,25 @@ local function GetAchievementCriteriaList(achID)
             numRequired = reqQuantity or 0,
         }
     end
+    if #list == 0 then
+        local text, completed = GetAchievementHeader(achID)
+        if text ~= "" then
+            list[1] = { text = text, finished = completed, numFulfilled = 0, numRequired = 0 }
+        end
+    end
     return list
 end
 
 local function GetAchievementProgress(achID)
-    local list = GetAchievementCriteriaList(achID)
-    if #list == 0 then
-        local completed = false
-        if GetAchievementInfo then
-            local _, _, _, done = GetAchievementInfo(achID)
-            completed = done and true or false
-        end
+    -- Preserve original semantics: zero-criteria achievements report
+    -- (1, true) when complete, (0, false) when not — so the progress bar
+    -- stays hidden on incomplete single-step achievements.
+    local rawNum = (_G.GetAchievementNumCriteria and GetAchievementNumCriteria(achID)) or 0
+    if rawNum == 0 then
+        local _, completed = GetAchievementHeader(achID)
         return completed and 1 or 0, completed
     end
-    return ComputeProgress(list)
+    return ComputeProgress(GetAchievementCriteriaList(achID))
 end
 
 local function GetTrackedRecipeList()
@@ -1013,6 +1035,74 @@ local function DumpQuestMetadata(questID)
     end
 end
 
+local function DumpAchievementMetadata(achID)
+    if not achID then return end
+    local function p(fmt, ...) print(("|cff4fc3f7BQL|r " .. fmt):format(...)) end
+
+    p("--- Achievement %d ---", achID)
+
+    if GetAchievementInfo then
+        local id, name, points, completed, month, day, year, description,
+              flags, icon, rewardText, isGuild, wasEarnedByMe, earnedBy,
+              isStatistic = GetAchievementInfo(achID)
+        p("id: %s", tostring(id))
+        p("name: %s", tostring(name))
+        p("description: %s", tostring(description))
+        p("points: %s", tostring(points))
+        p("completed: %s", tostring(completed))
+        p("earned: %s/%s/%s", tostring(month), tostring(day), tostring(year))
+        p("flags: %s", tostring(flags))
+        p("icon: %s", tostring(icon))
+        p("rewardText: %s", tostring(rewardText))
+        p("isGuild: %s, wasEarnedByMe: %s, earnedBy: %s, isStatistic: %s",
+            tostring(isGuild), tostring(wasEarnedByMe), tostring(earnedBy), tostring(isStatistic))
+    end
+
+    local num = (_G.GetAchievementNumCriteria and GetAchievementNumCriteria(achID)) or 0
+    p("criteria count: %d", num)
+    for i = 1, num do
+        local criteriaString, criteriaType, ccompleted, quantity, reqQuantity,
+              charName, cflags, assetID, quantityString, criteriaID, eligible
+              = GetAchievementCriteriaInfo(achID, i)
+        p("  [%d] criteriaString: %q", i, tostring(criteriaString or ""))
+        p("       criteriaType: %s, criteriaID: %s, assetID: %s",
+            tostring(criteriaType), tostring(criteriaID), tostring(assetID))
+        p("       quantity: %s/%s, quantityString: %s",
+            tostring(quantity), tostring(reqQuantity), tostring(quantityString))
+        p("       completed: %s, eligible: %s, charName: %s, flags: %s",
+            tostring(ccompleted), tostring(eligible), tostring(charName), tostring(cflags))
+
+        -- Newer asset-based lookup: if criterion references a quest, spell, or
+        -- achievement asset, those names are often the human-readable label.
+        if assetID and assetID ~= 0 then
+            local assetName
+            if criteriaType == 27 and C_QuestLog and C_QuestLog.GetTitleForQuestID then
+                assetName = C_QuestLog.GetTitleForQuestID(assetID)
+                if assetName then p("       quest asset name: %s", tostring(assetName)) end
+            elseif criteriaType == 8 and _G.GetAchievementInfo then
+                assetName = select(2, GetAchievementInfo(assetID))
+                if assetName then p("       achievement asset name: %s", tostring(assetName)) end
+            elseif _G.GetSpellInfo then
+                local ok, spellName = pcall(GetSpellInfo, assetID)
+                if ok and spellName then p("       spell asset name: %s", tostring(spellName)) end
+            end
+        end
+
+        -- Newer table-shaped API (if present on this client)
+        if criteriaID and C_AchievementInfo and C_AchievementInfo.GetCriteriaInfo then
+            local ok, infoTbl = pcall(C_AchievementInfo.GetCriteriaInfo, criteriaID)
+            if ok and type(infoTbl) == "table" then
+                local keys = {}
+                for k in pairs(infoTbl) do table.insert(keys, k) end
+                table.sort(keys)
+                for _, k in ipairs(keys) do
+                    p("       C_AI.%s = %s", k, tostring(infoTbl[k]))
+                end
+            end
+        end
+    end
+end
+
 local function RowKey(row)
     if not row then return nil end
     if row.itemKind == "achievement" and row.achievementID then
@@ -1211,8 +1301,12 @@ local function CreateRow()
             return
         end
         if IsControlKeyDown() and button == "RightButton" then
-            if BooshiesQuestLogDB.debug and row.questID then
-                DumpQuestMetadata(row.questID)
+            if BooshiesQuestLogDB.debug then
+                if row.questID then
+                    DumpQuestMetadata(row.questID)
+                elseif row.achievementID then
+                    DumpAchievementMetadata(row.achievementID)
+                end
             end
             return
         end
@@ -1997,33 +2091,43 @@ local function Reschedule()
     end)
 end
 
+local REQUIRED_EVENTS = {
+    "ADDON_LOADED",
+    "PLAYER_LOGIN",
+    "PLAYER_ENTERING_WORLD",
+    "ZONE_CHANGED_NEW_AREA",
+    "ZONE_CHANGED",
+    "ZONE_CHANGED_INDOORS",
+    "QUEST_LOG_UPDATE",
+    "QUEST_WATCH_LIST_CHANGED",
+    "QUEST_ACCEPTED",
+    "QUEST_REMOVED",
+    "UNIT_QUEST_LOG_CHANGED",
+    "SUPER_TRACKING_CHANGED",
+}
+
+-- Events that may not exist on every client version. Registered via pcall so
+-- a missing one does not break addon load on older clients.
+local OPTIONAL_EVENTS = {
+    "WORLD_QUEST_WATCH_LIST_CHANGED",
+    "TRACKED_ACHIEVEMENT_UPDATE",
+    "TRACKED_ACHIEVEMENT_LIST_CHANGED",
+    "CONTENT_TRACKING_UPDATE",
+    "CONTENT_TRACKING_LIST_UPDATE",
+    "TRACKED_RECIPE_UPDATE",
+    "TRADE_SKILL_LIST_UPDATE",
+    "BAG_UPDATE_DELAYED",
+    "PERKS_ACTIVITIES_UPDATED",
+    "TRACKED_PERKS_ACTIVITY_LIST_CHANGED",
+    "PERKS_ACTIVITIES_TRACKED_LIST_CHANGED",
+    "PERKS_ACTIVITY_COMPLETED",
+    "INITIATIVE_TASKS_TRACKED_LIST_CHANGED",
+    "INITIATIVE_ACTIVITY_LOG_UPDATED",
+}
+
 local ev = CreateFrame("Frame")
-ev:RegisterEvent("ADDON_LOADED")
-ev:RegisterEvent("PLAYER_LOGIN")
-ev:RegisterEvent("PLAYER_ENTERING_WORLD")
-ev:RegisterEvent("ZONE_CHANGED_NEW_AREA")
-ev:RegisterEvent("ZONE_CHANGED")
-ev:RegisterEvent("ZONE_CHANGED_INDOORS")
-ev:RegisterEvent("QUEST_LOG_UPDATE")
-ev:RegisterEvent("QUEST_WATCH_LIST_CHANGED")
-pcall(ev.RegisterEvent, ev, "WORLD_QUEST_WATCH_LIST_CHANGED")
-ev:RegisterEvent("QUEST_ACCEPTED")
-ev:RegisterEvent("QUEST_REMOVED")
-ev:RegisterEvent("UNIT_QUEST_LOG_CHANGED")
-ev:RegisterEvent("SUPER_TRACKING_CHANGED")
-pcall(ev.RegisterEvent, ev, "TRACKED_ACHIEVEMENT_UPDATE")
-pcall(ev.RegisterEvent, ev, "TRACKED_ACHIEVEMENT_LIST_CHANGED")
-pcall(ev.RegisterEvent, ev, "CONTENT_TRACKING_UPDATE")
-pcall(ev.RegisterEvent, ev, "TRACKED_RECIPE_UPDATE")
-pcall(ev.RegisterEvent, ev, "TRADE_SKILL_LIST_UPDATE")
-pcall(ev.RegisterEvent, ev, "BAG_UPDATE_DELAYED")
-pcall(ev.RegisterEvent, ev, "CONTENT_TRACKING_LIST_UPDATE")
-pcall(ev.RegisterEvent, ev, "PERKS_ACTIVITIES_UPDATED")
-pcall(ev.RegisterEvent, ev, "TRACKED_PERKS_ACTIVITY_LIST_CHANGED")
-pcall(ev.RegisterEvent, ev, "PERKS_ACTIVITIES_TRACKED_LIST_CHANGED")
-pcall(ev.RegisterEvent, ev, "PERKS_ACTIVITY_COMPLETED")
-pcall(ev.RegisterEvent, ev, "INITIATIVE_TASKS_TRACKED_LIST_CHANGED")
-pcall(ev.RegisterEvent, ev, "INITIATIVE_ACTIVITY_LOG_UPDATED")
+for _, e in ipairs(REQUIRED_EVENTS) do ev:RegisterEvent(e) end
+for _, e in ipairs(OPTIONAL_EVENTS) do pcall(ev.RegisterEvent, ev, e) end
 
 ev:SetScript("OnEvent", function(self, event, arg1)
     safeCall("OnEvent:" .. tostring(event), function()
