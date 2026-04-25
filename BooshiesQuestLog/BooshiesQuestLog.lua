@@ -852,6 +852,7 @@ local ROW_HEIGHT = 26
 local ROW_GAP = 6
 local BAR_HEIGHT = 3
 local BAR_BOTTOM_PAD = 3
+local TOP_CLUSTER_Y = 3   -- vertical offset for arrow + track + completion icon
 
 -- Frame Chrome
 local HEADER_OFFSET = 46
@@ -1721,10 +1722,9 @@ local function OnRowClick(row)
 
 end
 
-local function CreateRow()
-
-    local row = CreateFrame("Frame", nil, content)
-    row:SetHeight(ROW_HEIGHT)
+-- Three full-row textures (super-track tint, completed tint, flash overlay)
+-- plus the flash AnimationGroup and the row:FlashAttention method.
+local function BuildRowBackgrounds(row)
 
     local superBg = row:CreateTexture(nil, "BACKGROUND", nil, -2)
     superBg:SetAllPoints(row)
@@ -1760,12 +1760,22 @@ local function CreateRow()
         self.flashAnim:Play()
     end
 
+end
+
+local function BuildRowSeparator(row)
+
     local sep = row:CreateTexture(nil, "ARTWORK")
     sep:SetColorTexture(unpack(UI_COLORS.rowSeparator))
     sep:SetHeight(1)
     sep:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, -math.floor(ROW_GAP / 2))
     sep:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, -math.floor(ROW_GAP / 2))
     row.separator = sep
+
+end
+
+-- Defines `row.btn` (the clickable area covering the title row) and `row.hover`
+-- (the highlight texture, shown by WireRowClick on enter/leave).
+local function BuildRowButton(row)
 
     local btn = CreateFrame("Button", nil, row)
     btn:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
@@ -1778,18 +1788,28 @@ local function CreateRow()
     hover:SetAllPoints(btn)
     hover:SetColorTexture(unpack(UI_COLORS.rowHover))
     hover:Hide()
+    row.hover = hover
 
-    local TOP_CLUSTER_Y = 3
+end
 
-    local arrow = btn:CreateTexture(nil, "OVERLAY")
+local function BuildRowArrow(row)
+
+    local arrow = row.btn:CreateTexture(nil, "OVERLAY")
     arrow:SetSize(14, 14)
-    arrow:SetPoint("LEFT", btn, "LEFT", 3, TOP_CLUSTER_Y)
+    arrow:SetPoint("LEFT", row.btn, "LEFT", 3, TOP_CLUSTER_Y)
     arrow:SetTexture(UI_TEXTURES.plusButton)
     row.arrow = arrow
 
-    local track = CreateFrame("Button", nil, btn)
+end
+
+-- Radio-style super-track button on the right edge. The OnClick handler reads
+-- row.questID at click time so it stays current as the row gets recycled across
+-- different quests by the row pool.
+local function BuildRowSuperTrackBtn(row)
+
+    local track = CreateFrame("Button", nil, row.btn)
     track:SetSize(18, 18)
-    track:SetPoint("RIGHT", btn, "RIGHT", -2, TOP_CLUSTER_Y)
+    track:SetPoint("RIGHT", row.btn, "RIGHT", -2, TOP_CLUSTER_Y)
     track:SetHitRectInsets(-4, -4, -4, -4)
 
     local ring = track:CreateTexture(nil, "ARTWORK")
@@ -1812,7 +1832,10 @@ local function CreateRow()
     trackHover:SetBlendMode("ADD")
 
     track._checked = false
-    function track:SetChecked(v) self._checked = v and true or false; fill:SetShown(self._checked) end
+    function track:SetChecked(v)
+        self._checked = v and true or false
+        fill:SetShown(self._checked)
+    end
     function track:GetChecked() return self._checked end
 
     track:SetScript("OnClick", function(self)
@@ -1831,20 +1854,32 @@ local function CreateRow()
         GameTooltip:Show()
     end)
     track:SetScript("OnLeave", GameTooltip_Hide)
+
     row.trackCheck = track
 
-    local completionIcon = btn:CreateTexture(nil, "OVERLAY")
+end
+
+local function BuildRowCompletionIcon(row)
+
+    local completionIcon = row.btn:CreateTexture(nil, "OVERLAY")
     completionIcon:SetSize(14, 14)
-    completionIcon:SetPoint("RIGHT", track, "LEFT", -4, 0)
+    completionIcon:SetPoint("RIGHT", row.trackCheck, "LEFT", -4, 0)
     completionIcon:SetTexture(UI_TEXTURES.checkmark)
     completionIcon:Hide()
     row.completionIcon = completionIcon
 
+end
+
+-- Background bar + foreground fill, plus row:SetProgress(pct, hasAny, complete)
+-- which clamps to [0, 1], picks the appropriate fill colour, and falls back to
+-- a sensible width when the bar hasn't been measured yet.
+local function BuildRowProgressBar(row)
+
     local barBg = row:CreateTexture(nil, "ARTWORK")
     barBg:SetColorTexture(unpack(UI_COLORS.barBg))
     barBg:SetHeight(BAR_HEIGHT)
-    barBg:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 4, BAR_BOTTOM_PAD)
-    barBg:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -4, BAR_BOTTOM_PAD)
+    barBg:SetPoint("BOTTOMLEFT", row.btn, "BOTTOMLEFT", 4, BAR_BOTTOM_PAD)
+    barBg:SetPoint("BOTTOMRIGHT", row.btn, "BOTTOMRIGHT", -4, BAR_BOTTOM_PAD)
     barBg:Hide()
     row.barBg = barBg
 
@@ -1880,9 +1915,16 @@ local function CreateRow()
         end
     end
 
-    local title = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    title:SetPoint("LEFT", arrow, "RIGHT", 4, 0)
-    title:SetPoint("RIGHT", track, "LEFT", -2, 0)
+end
+
+-- Title font string + row:SetComplete(flag), which re-anchors the title's right
+-- edge to the completion icon when complete (so the icon is visible to its
+-- right) or to the track button when not.
+local function BuildRowTitle(row)
+
+    local title = row.btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetPoint("LEFT", row.arrow, "RIGHT", 4, 0)
+    title:SetPoint("RIGHT", row.trackCheck, "LEFT", -2, 0)
     title:SetJustifyH("LEFT")
     title:SetWordWrap(false)
     row.title = title
@@ -1899,6 +1941,13 @@ local function CreateRow()
             self.title:SetPoint("RIGHT", self.trackCheck, "LEFT", -2, 0)
         end
     end
+
+end
+
+local function WireRowClick(row)
+
+    local btn = row.btn
+    local hover = row.hover
 
     btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     btn:SetScript("OnEnter", function() hover:Show() end)
@@ -1954,6 +2003,23 @@ local function CreateRow()
         OnRowClick(row)
 
     end)
+
+end
+
+local function CreateRow()
+
+    local row = CreateFrame("Frame", nil, content)
+    row:SetHeight(ROW_HEIGHT)
+
+    BuildRowBackgrounds(row)
+    BuildRowSeparator(row)
+    BuildRowButton(row)
+    BuildRowArrow(row)
+    BuildRowSuperTrackBtn(row)
+    BuildRowCompletionIcon(row)
+    BuildRowProgressBar(row)
+    BuildRowTitle(row)
+    WireRowClick(row)
 
     return row
 
