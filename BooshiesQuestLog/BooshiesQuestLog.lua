@@ -39,6 +39,18 @@ local function ComputeProgress(list)
     return sum / count, true
 end
 
+-- Returns the first value at obj[k] (for k in keys) that is a non-empty table,
+-- or nil. Used to probe WoW API records that ship the same data under different
+-- field names across game versions.
+local function firstNonEmptyField(obj, keys)
+    if type(obj) ~= "table" then return nil end
+    for _, k in ipairs(keys) do
+        local v = obj[k]
+        if type(v) == "table" and #v > 0 then return v end
+    end
+    return nil
+end
+
 local DEFAULTS = {
     enabled = true,
     filterByZone = false,
@@ -440,11 +452,7 @@ local function GetInitiativeTaskObjectives(id)
     local info = GetInitiativeTaskInfo(id)
     if not info then return {} end
     local list = {}
-    local criteria
-    for _, key in ipairs({ "criteriaList", "requirementsList", "objectives", "conditions" }) do
-        local c = info[key]
-        if type(c) == "table" and #c > 0 then criteria = c; break end
-    end
+    local criteria = firstNonEmptyField(info, { "criteriaList", "requirementsList", "objectives", "conditions" })
     if criteria then
         for _, c in ipairs(criteria) do
             if type(c) == "table" then
@@ -485,11 +493,7 @@ local function GetActivityObjectives(id)
     if not info then return {} end
     local list = {}
 
-    local criteria
-    for _, key in ipairs({ "criteriaList", "requirementsList", "conditions" }) do
-        local c = info[key]
-        if type(c) == "table" and #c > 0 then criteria = c; break end
-    end
+    local criteria = firstNonEmptyField(info, { "criteriaList", "requirementsList", "conditions" })
 
     if criteria then
         for _, c in ipairs(criteria) do
