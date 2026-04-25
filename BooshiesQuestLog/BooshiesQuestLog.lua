@@ -10,7 +10,7 @@ local observedErrors = {}
 local function safeCall(label, fn, ...)
 
     local ok, err = pcall(fn, ...)
-    
+
     if not ok and err then
         local msg = tostring(err)
         if not observedErrors[msg] then
@@ -27,8 +27,11 @@ end
 -- average matches what a user would expect ("3 of 5 done" with 2 unknowns
 -- reads as 3/5, not 3/3).
 local function ComputeProgress(list)
+
     if not list or #list == 0 then return 0, false end
+
     local sum, count = 0, 0
+
     for _, item in ipairs(list) do
         if item.finished then
             sum = sum + 1
@@ -36,26 +39,32 @@ local function ComputeProgress(list)
         elseif item.numRequired and item.numRequired > 0 then
             local f = (item.numFulfilled or 0) / item.numRequired
             if f > 1 then f = 1 elseif f < 0 then f = 0 end
+
             sum = sum + f
             count = count + 1
         else
             count = count + 1
         end
     end
+
     if count == 0 then return 0, false end
     return sum / count, true
+
 end
 
--- Returns the first value at obj[k] (for k in keys) that is a non-empty table,
--- or nil. Used to probe WoW API records that ship the same data under different
--- field names across game versions.
+-- Probes WoW API records that ship the same data under different field
+-- names across game versions.
 local function firstNonEmptyField(obj, keys)
+
     if type(obj) ~= "table" then return nil end
+
     for _, k in ipairs(keys) do
         local v = obj[k]
         if type(v) == "table" and #v > 0 then return v end
     end
+
     return nil
+
 end
 
 local function tryAppendIDs(list, seen, fn, ...)
@@ -167,18 +176,24 @@ local UI_COLORS = {
 -- =============================================================================
 
 local function InitDB()
+
     for k, v in pairs(DEFAULTS) do
         if BooshiesQuestLogDB[k] == nil then BooshiesQuestLogDB[k] = v end
     end
+
+    -- Migration from earlier single-key form to the expandedKeys set.
     if type(BooshiesQuestLogDB.expandedKey) == "string" then
         BooshiesQuestLogDB.expandedKeys = BooshiesQuestLogDB.expandedKeys or {}
         BooshiesQuestLogDB.expandedKeys[BooshiesQuestLogDB.expandedKey] = true
         BooshiesQuestLogDB.expandedKey = nil
     end
+
+    -- Clamp maxHeight if the screen is now smaller than a previously saved value.
     local screenH = UIParent and UIParent:GetHeight() or 768
     if BooshiesQuestLogDB.maxHeight and BooshiesQuestLogDB.maxHeight > screenH - 60 then
         BooshiesQuestLogDB.maxHeight = math.max(DEFAULTS.maxHeight, math.floor(screenH * 0.5))
     end
+
 end
 
 
@@ -191,9 +206,12 @@ local function GetPlayerZoneMapID()
 end
 
 local function GetMapName(mapID)
+
     if not mapID then return nil end
+
     local info = C_Map.GetMapInfo(mapID)
     return info and info.name
+
 end
 
 
@@ -202,10 +220,13 @@ end
 -- =============================================================================
 
 local function SnapshotQuestLog()
+
     local snapshot, headerName = {}, nil
     local count = C_QuestLog.GetNumQuestLogEntries() or 0
+
     for i = 1, count do
         local info = C_QuestLog.GetInfo(i)
+
         if info then
             if info.isHeader then
                 headerName = info.title
@@ -222,23 +243,31 @@ local function SnapshotQuestLog()
             end
         end
     end
+
     return snapshot
+
 end
 
 local function addTaskEntry(snapshot, qid, source)
+
     if not qid or snapshot[qid] then return end
+
     local title = (C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(qid)) or ("Quest " .. qid)
+
     snapshot[qid] = {
         title = title,
         isComplete = C_QuestLog.IsComplete and C_QuestLog.IsComplete(qid) or false,
         isTask = true,
         [source] = true,
     }
+
 end
 
 local function AddTaskQuestsToSnapshot(snapshot, mapID)
+
     if C_QuestLog and C_QuestLog.GetNumWorldQuestWatches and C_QuestLog.GetQuestIDForWorldQuestWatchIndex then
         local ok, n = pcall(C_QuestLog.GetNumWorldQuestWatches)
+
         if ok and type(n) == "number" then
             for i = 1, n do
                 local ok2, qid = pcall(C_QuestLog.GetQuestIDForWorldQuestWatchIndex, i)
@@ -251,6 +280,7 @@ local function AddTaskQuestsToSnapshot(snapshot, mapID)
 
     if C_TaskQuest and C_TaskQuest.GetQuestsForPlayerByMapID then
         local ok, list = pcall(C_TaskQuest.GetQuestsForPlayerByMapID, mapID)
+
         if ok and type(list) == "table" then
             for _, t in ipairs(list) do
                 addTaskEntry(snapshot, t.questId or t.questID, "fromTaskAPI")
@@ -260,34 +290,44 @@ local function AddTaskQuestsToSnapshot(snapshot, mapID)
 
     if C_QuestLog and C_QuestLog.GetQuestsOnMap then
         local ok, list = pcall(C_QuestLog.GetQuestsOnMap, mapID)
+
         if ok and type(list) == "table" then
             for _, t in ipairs(list) do
                 addTaskEntry(snapshot, t.questID, "fromPOI")
             end
         end
     end
+
 end
 
 local function BuildPOISet(mapID)
+
     local set = {}
     if not mapID then return set end
+
     local quests = C_QuestLog.GetQuestsOnMap(mapID)
     if quests then
         for _, q in ipairs(quests) do
             if q.questID then set[q.questID] = true end
         end
     end
+
     return set
+
 end
 
 local function IsCampaign(info) return info and info.campaignID and info.campaignID > 0 end
 
 local function GetClassification(questID)
+
     if C_QuestInfoSystem and C_QuestInfoSystem.GetQuestClassification then
         local v = C_QuestInfoSystem.GetQuestClassification(questID)
         if v then return v end
     end
+
+    -- Default to 7 ("Normal") when the API does not classify this quest.
     return 7
+
 end
 
 
@@ -319,23 +359,32 @@ end
 -- is the human-readable label in those cases, with `name` as a last-resort
 -- fallback.
 local function GetAchievementHeader(achID)
+
     if not GetAchievementInfo then return "", false end
+
     local _, name, _, completed, _, _, _, description = GetAchievementInfo(achID)
     local text = (description and description ~= "" and description) or name or ""
+
     return text, completed and true or false
+
 end
 
 local function GetAchievementCriteriaList(achID)
+
     local list = {}
     if not _G.GetAchievementNumCriteria or not _G.GetAchievementCriteriaInfo then return list end
+
     local num = GetAchievementNumCriteria(achID) or 0
     local headerText
+
     for i = 1, num do
         local cstr, _, completed, quantity, reqQuantity = GetAchievementCriteriaInfo(achID, i)
+
         if not cstr or cstr == "" then
             headerText = headerText or GetAchievementHeader(achID)
             cstr = headerText
         end
+
         list[i] = {
             text = cstr or "",
             finished = completed and true or false,
@@ -343,25 +392,33 @@ local function GetAchievementCriteriaList(achID)
             numRequired = reqQuantity or 0,
         }
     end
+
+    -- No criteria returned at all: synthesise one entry from the achievement
+    -- header so single-step achievements still have something to display.
     if #list == 0 then
         local text, completed = GetAchievementHeader(achID)
         if text ~= "" then
             list[1] = { text = text, finished = completed, numFulfilled = 0, numRequired = 0 }
         end
     end
+
     return list
+
 end
 
 local function GetAchievementProgress(achID)
-    -- Preserve original semantics: zero-criteria achievements report
-    -- (1, true) when complete, (0, false) when not, so the progress bar
-    -- stays hidden on incomplete single-step achievements.
+
+    -- Zero-criteria achievements report (1, true) when complete, (0, false)
+    -- when not, so the progress bar stays hidden on incomplete single-step
+    -- achievements.
     local rawNum = (_G.GetAchievementNumCriteria and GetAchievementNumCriteria(achID)) or 0
     if rawNum == 0 then
         local _, completed = GetAchievementHeader(achID)
         return completed and 1 or 0, completed
     end
+
     return ComputeProgress(GetAchievementCriteriaList(achID))
+
 end
 
 
@@ -383,49 +440,67 @@ local function GetTrackedRecipeList()
 end
 
 local function GetRecipeName(recipeID)
+
     if C_TradeSkillUI and C_TradeSkillUI.GetRecipeInfo then
         local ok, info = pcall(C_TradeSkillUI.GetRecipeInfo, recipeID)
         if ok and info and info.name then return info.name end
     end
+
     return "Recipe " .. tostring(recipeID)
+
 end
 
 local function ItemCount(itemID)
+
     if not itemID then return 0 end
+
     if C_Item and C_Item.GetItemCount then
         local ok, n = pcall(C_Item.GetItemCount, itemID, false, false, true)
         if ok and n then return n end
     end
+
     if _G.GetItemCount then
         local ok, n = pcall(GetItemCount, itemID, false, false, true)
         if ok and n then return n end
     end
+
     return 0
+
 end
 
 local function ItemName(itemID)
+
     if not itemID then return "?" end
+
     if C_Item and C_Item.GetItemNameByID then
         local n = C_Item.GetItemNameByID(itemID)
         if n then return n end
     end
+
     if _G.GetItemInfo then
         local n = GetItemInfo(itemID)
         if n then return n end
     end
+
     return "Item " .. itemID
+
 end
 
 local function GetRecipeReagents(recipeID)
+
     local reagents = {}
     if not C_TradeSkillUI or not C_TradeSkillUI.GetRecipeSchematic then return reagents end
+
     local ok, schematic = pcall(C_TradeSkillUI.GetRecipeSchematic, recipeID, false)
     if not ok or not schematic or not schematic.reagentSlotSchematics then return reagents end
+
     for _, slot in ipairs(schematic.reagentSlotSchematics) do
         local needed = slot.quantityRequired or 0
         local reagent = slot.reagents and slot.reagents[1]
+
         if needed > 0 and reagent and reagent.itemID then
             local have = ItemCount(reagent.itemID)
+
             reagents[#reagents + 1] = {
                 text = ItemName(reagent.itemID),
                 numFulfilled = have,
@@ -434,7 +509,9 @@ local function GetRecipeReagents(recipeID)
             }
         end
     end
+
     return reagents
+
 end
 
 local function GetRecipeProgress(recipeID)
@@ -447,16 +524,21 @@ end
 -- =============================================================================
 
 local function IterateActivities(callback)
+
     if not C_PerksActivities or not C_PerksActivities.GetPerksActivitiesInfo then return end
+
     local ok, info = pcall(C_PerksActivities.GetPerksActivitiesInfo)
     if not ok or type(info) ~= "table" then return end
+
     local activities = info.activities or info
     if type(activities) ~= "table" then return end
+
     for _, activity in ipairs(activities) do
         if type(activity) == "table" then
             if callback(activity) == false then return end
         end
     end
+
 end
 
 local function ActivityID(activity)
@@ -485,11 +567,14 @@ local function GetTrackedMonthlyActivities()
 end
 
 local function GetActivityInfo(id)
+
     if not C_PerksActivities then return nil end
+
     if C_PerksActivities.GetPerksActivityInfo then
         local ok, info = pcall(C_PerksActivities.GetPerksActivityInfo, id)
         if ok and info then return info end
     end
+
     local found
     IterateActivities(function(activity)
         if ActivityID(activity) == id then
@@ -497,16 +582,22 @@ local function GetActivityInfo(id)
             return false
         end
     end)
+
     return found
+
 end
 
 local function GetNeighborhoodTasks()
+
     if not C_NeighborhoodInitiative or not C_NeighborhoodInitiative.GetNeighborhoodInitiativeInfo then return nil end
+
     local ok, info = pcall(C_NeighborhoodInitiative.GetNeighborhoodInitiativeInfo)
     if ok and type(info) == "table" and type(info.tasks) == "table" then
         return info.tasks
     end
+
     return nil
+
 end
 
 local function TaskID(t)
@@ -539,65 +630,99 @@ local function GetTrackedInitiativeTasks()
 end
 
 local function GetInitiativeTaskInfo(id)
+
     if not C_NeighborhoodInitiative then return nil end
+
     if C_NeighborhoodInitiative.GetInitiativeTaskInfo then
         local ok, info = pcall(C_NeighborhoodInitiative.GetInitiativeTaskInfo, id)
         if ok and type(info) == "table" then return info end
     end
+
     local tasks = GetNeighborhoodTasks()
     if tasks then
         for _, t in ipairs(tasks) do
             if type(t) == "table" and TaskID(t) == id then return t end
         end
     end
+
     return nil
+
 end
 
 local function GetInitiativeTaskObjectives(id)
+
     local info = GetInitiativeTaskInfo(id)
     if not info then return {} end
+
     local list = {}
     local criteria = firstNonEmptyField(info, { "criteriaList", "requirementsList", "objectives", "conditions" })
+
     if criteria then
         for _, c in ipairs(criteria) do
             if type(c) == "table" then
                 local text = c.requirementText or c.description or c.text or c.name or c.title or "?"
                 if type(text) == "string" then text = text:gsub("^%s*%-%s*", "") end
+
                 local finished = c.completed or c.finished or c.isComplete or false
                 local have = c.quantity or c.numFulfilled or c.progress or c.current or 0
                 local need = c.required or c.numRequired or c.requiredQuantity or c.quantityRequired or 0
+
                 if need == 0 and type(text) == "string" then
                     local n, m = text:match("(%d+)%s*/%s*(%d+)")
-                    if n and m then have = tonumber(n) or 0; need = tonumber(m) or 0 end
+                    if n and m then
+                        have = tonumber(n) or 0
+                        need = tonumber(m) or 0
+                    end
                 end
-                list[#list + 1] = { text = text, finished = finished and true or false, numFulfilled = have, numRequired = need }
+
+                list[#list + 1] = {
+                    text = text,
+                    finished = finished and true or false,
+                    numFulfilled = have,
+                    numRequired = need,
+                }
             end
         end
     end
+
     if #list == 0 and info.description and info.description ~= "" then
-        list[#list + 1] = { text = info.description, finished = info.completed and true or false, numFulfilled = 0, numRequired = 0 }
+        list[#list + 1] = {
+            text = info.description,
+            finished = info.completed and true or false,
+            numFulfilled = 0,
+            numRequired = 0,
+        }
     end
+
     return list
+
 end
 
 local function GetInitiativeTaskProgress(id)
+
     local info = GetInitiativeTaskInfo(id)
     if not info then return 0, false end
     if info.completed then return 1, true end
+
     return ComputeProgress(GetInitiativeTaskObjectives(id))
+
 end
 
 local function GetInitiativeTaskName(id)
+
     local info = GetInitiativeTaskInfo(id)
     if info then return info.taskName or info.name or info.activityName or info.title or ("Endeavour " .. id) end
+
     return "Endeavour " .. id
+
 end
 
 local function GetActivityObjectives(id)
+
     local info = GetActivityInfo(id)
     if not info then return {} end
-    local list = {}
 
+    local list = {}
     local criteria = firstNonEmptyField(info, { "criteriaList", "requirementsList", "conditions" })
 
     if criteria then
@@ -607,13 +732,19 @@ local function GetActivityObjectives(id)
                 if type(text) == "string" then
                     text = text:gsub("^%s*%-%s*", "")
                 end
+
                 local finished = c.completed or c.finished or c.isComplete or false
                 local have = c.quantity or c.numFulfilled or c.progress or c.current or 0
                 local need = c.required or c.numRequired or c.requiredQuantity or c.quantityRequired or c.needed or 0
+
                 if need == 0 and type(text) == "string" then
                     local n, m = text:match("(%d+)%s*/%s*(%d+)")
-                    if n and m then have = tonumber(n) or 0; need = tonumber(m) or 0 end
+                    if n and m then
+                        have = tonumber(n) or 0
+                        need = tonumber(m) or 0
+                    end
                 end
+
                 list[#list + 1] = {
                     text = text,
                     finished = finished and true or false,
@@ -634,9 +765,11 @@ local function GetActivityObjectives(id)
     end
 
     return list
+
 end
 
 local function GetActivityProgress(id)
+
     local info = GetActivityInfo(id)
     if not info then return 0, false end
     if info.completed then return 1, true end
@@ -647,9 +780,12 @@ local function GetActivityProgress(id)
     local have = info.thresholdContributionAmount or 0
     local need = info.thresholdMax or info.requiredContributionAmount or 0
     if need <= 0 then return 0, false end
+
     local f = have / need
     if f > 1 then f = 1 elseif f < 0 then f = 0 end
+
     return f, true
+
 end
 
 
@@ -662,21 +798,28 @@ local function GetQuestProgress(questID)
 end
 
 local function IsQuestWatched(questID)
+
     if C_QuestLog and C_QuestLog.GetQuestWatchType then
         local wt = C_QuestLog.GetQuestWatchType(questID)
         if wt and wt ~= 0 then return true end
     end
+
     return false
+
 end
 
 local function ShouldShow(questID, snapshot, poiSet, currentMapID, currentMapName)
+
     local info = snapshot[questID]
     if not info then return false end
     if not IsQuestWatched(questID) then return false end
+
     if not BooshiesQuestLogDB.filterByZone then return true end
     if poiSet[questID] then return true end
     if BooshiesQuestLogDB.alwaysShowCampaign and IsCampaign(info) then return true end
+
     return false
+
 end
 
 
