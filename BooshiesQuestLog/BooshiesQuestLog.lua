@@ -15,6 +15,30 @@ local function safeCall(label, fn, ...)
     return ok
 end
 
+-- Averages progress across a list of objective-shaped entries.
+-- Each entry may carry { finished, numFulfilled, numRequired }; entries lacking
+-- progress info still count toward the denominator so the average matches what
+-- a user would expect ("3 of 5 done" with 2 unknowns reads as 3/5, not 3/3).
+local function ComputeProgress(list)
+    if not list or #list == 0 then return 0, false end
+    local sum, count = 0, 0
+    for _, item in ipairs(list) do
+        if item.finished then
+            sum = sum + 1
+            count = count + 1
+        elseif item.numRequired and item.numRequired > 0 then
+            local f = (item.numFulfilled or 0) / item.numRequired
+            if f > 1 then f = 1 elseif f < 0 then f = 0 end
+            sum = sum + f
+            count = count + 1
+        else
+            count = count + 1
+        end
+    end
+    if count == 0 then return 0, false end
+    return sum / count, true
+end
+
 local DEFAULTS = {
     enabled = true,
     filterByZone = false,
@@ -223,22 +247,7 @@ local function GetAchievementProgress(achID)
         end
         return completed and 1 or 0, completed
     end
-    local sum, count = 0, 0
-    for _, c in ipairs(list) do
-        if c.finished then
-            sum = sum + 1
-            count = count + 1
-        elseif c.numRequired and c.numRequired > 0 then
-            local f = (c.numFulfilled or 0) / c.numRequired
-            if f > 1 then f = 1 elseif f < 0 then f = 0 end
-            sum = sum + f
-            count = count + 1
-        else
-            count = count + 1
-        end
-    end
-    if count == 0 then return 0, false end
-    return sum / count, true
+    return ComputeProgress(list)
 end
 
 local function GetTrackedRecipeList()
@@ -317,15 +326,7 @@ local function GetRecipeReagents(recipeID)
 end
 
 local function GetRecipeProgress(recipeID)
-    local list = GetRecipeReagents(recipeID)
-    if #list == 0 then return 0, false end
-    local sum = 0
-    for _, r in ipairs(list) do
-        local f = (r.numFulfilled or 0) / (r.numRequired or 1)
-        if f > 1 then f = 1 elseif f < 0 then f = 0 end
-        sum = sum + f
-    end
-    return sum / #list, true
+    return ComputeProgress(GetRecipeReagents(recipeID))
 end
 
 local function IterateActivities(callback)
@@ -470,19 +471,7 @@ local function GetInitiativeTaskProgress(id)
     local info = GetInitiativeTaskInfo(id)
     if not info then return 0, false end
     if info.completed then return 1, true end
-    local objs = GetInitiativeTaskObjectives(id)
-    if #objs == 0 then return 0, false end
-    local sum = 0
-    for _, o in ipairs(objs) do
-        if o.finished then
-            sum = sum + 1
-        elseif o.numRequired and o.numRequired > 0 then
-            local f = (o.numFulfilled or 0) / o.numRequired
-            if f > 1 then f = 1 elseif f < 0 then f = 0 end
-            sum = sum + f
-        end
-    end
-    return sum / #objs, true
+    return ComputeProgress(GetInitiativeTaskObjectives(id))
 end
 
 local function GetInitiativeTaskName(id)
@@ -544,19 +533,7 @@ local function GetActivityProgress(id)
     if info.completed then return 1, true end
 
     local objs = GetActivityObjectives(id)
-    if #objs > 0 then
-        local sum = 0
-        for _, obj in ipairs(objs) do
-            if obj.finished then
-                sum = sum + 1
-            elseif obj.numRequired and obj.numRequired > 0 then
-                local f = (obj.numFulfilled or 0) / obj.numRequired
-                if f > 1 then f = 1 elseif f < 0 then f = 0 end
-                sum = sum + f
-            end
-        end
-        return sum / #objs, true
-    end
+    if #objs > 0 then return ComputeProgress(objs) end
 
     local have = info.thresholdContributionAmount or 0
     local need = info.thresholdMax or info.requiredContributionAmount or 0
@@ -567,24 +544,7 @@ local function GetActivityProgress(id)
 end
 
 local function GetQuestProgress(questID)
-    local objectives = C_QuestLog.GetQuestObjectives(questID) or {}
-    if #objectives == 0 then return 0, false end
-    local sum, count = 0, 0
-    for _, obj in ipairs(objectives) do
-        if obj.finished then
-            sum = sum + 1
-            count = count + 1
-        elseif obj.numRequired and obj.numRequired > 0 then
-            local f = (obj.numFulfilled or 0) / obj.numRequired
-            if f > 1 then f = 1 elseif f < 0 then f = 0 end
-            sum = sum + f
-            count = count + 1
-        else
-            count = count + 1
-        end
-    end
-    if count == 0 then return 0, false end
-    return sum / count, true
+    return ComputeProgress(C_QuestLog.GetQuestObjectives(questID))
 end
 
 local function IsQuestWatched(questID)
