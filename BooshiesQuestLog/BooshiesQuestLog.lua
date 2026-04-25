@@ -629,6 +629,8 @@ local ROW_GAP = 6
 local BAR_HEIGHT = 3
 local BAR_BOTTOM_PAD = 3
 local MIN_MAX_HEIGHT = 150
+local MAX_RESIZE_HEIGHT = 2000
+local DEFAULT_MAX_HEIGHT = 500
 
 local frame, titleText, zoneText, content, scrollFrame, settingsFrame
 local ToggleSuperTrack
@@ -2041,15 +2043,20 @@ function ApplySettings()
     Refresh()
 end
 
-local function BuildUI()
-    if frame then return end
+local function BuildMainFrame()
+
     frame = CreateFrame("Frame", "BooshiesQuestLogFrame", UIParent)
     frame:SetSize(BooshiesQuestLogDB.width or 280, 200)
     frame:SetFrameStrata("MEDIUM")
     frame:SetMovable(true)
     frame:EnableMouse(true)
     frame:SetClampedToScreen(true)
+
     ApplyFlatSkin(frame)
+
+end
+
+local function BuildHeader()
 
     local header = CreateFrame("Button", nil, frame)
     header:SetPoint("TOPLEFT", frame, "TOPLEFT", 4, -4)
@@ -2084,13 +2091,21 @@ local function BuildUI()
     zoneText:SetJustifyH("LEFT")
     zoneText:SetTextColor(unpack(UI_COLORS.zoneText))
 
+end
+
+local function BuildHeaderButtons()
+
+    local header = frame.header
+
     local cogBtn = CreateFrame("Button", nil, header)
     cogBtn:SetSize(16, 16)
     cogBtn:SetPoint("RIGHT", header, "TOPRIGHT", 0, -11)
     cogBtn:SetNormalTexture(UI_TEXTURES.cog)
+
     local cogHover = cogBtn:CreateTexture(nil, "HIGHLIGHT")
     cogHover:SetAllPoints(cogBtn)
     cogHover:SetColorTexture(unpack(UI_COLORS.cogHover))
+
     cogBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
         GameTooltip:AddLine("Settings")
@@ -2130,10 +2145,12 @@ local function BuildUI()
     collapseAllText:SetPoint("RIGHT", collapseAllBtn, "RIGHT", 0, 0)
     collapseAllText:SetText("collapse all")
     collapseAllText:SetTextColor(unpack(UI_COLORS.collapseAllText))
+
     collapseAllBtn:SetSize((collapseAllText:GetStringWidth() or 60) + 4, 14)
     collapseAllBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -8, -22)
     collapseAllBtn:SetFrameLevel((header:GetFrameLevel() or frame:GetFrameLevel()) + 5)
     collapseAllBtn:SetHitRectInsets(-3, -3, -3, -3)
+
     collapseAllBtn:SetScript("OnEnter", function() collapseAllText:SetTextColor(unpack(UI_COLORS.collapseAllHover)) end)
     collapseAllBtn:SetScript("OnLeave", function() collapseAllText:SetTextColor(unpack(UI_COLORS.collapseAllText)) end)
     collapseAllBtn:SetScript("OnClick", function()
@@ -2148,6 +2165,10 @@ local function BuildUI()
         Refresh()
     end)
     frame.collapseAllBtn = collapseAllBtn
+
+end
+
+local function BuildScrollArea()
 
     scrollFrame = CreateFrame("ScrollFrame", "BooshiesQuestLogScroll", frame, "UIPanelScrollFrameTemplate")
     scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 8, -HEADER_OFFSET)
@@ -2176,6 +2197,10 @@ local function BuildUI()
         self:SetVerticalScroll(new)
     end)
 
+end
+
+local function BuildResizer()
+
     local resizer = CreateFrame("Button", nil, frame)
     resizer:SetSize(44, 6)
     resizer:SetPoint("BOTTOM", frame, "BOTTOM", 0, 4)
@@ -2195,7 +2220,7 @@ local function BuildUI()
         local delta = self._dragStartY - cur
         local newMax = math.floor(self._dragStartMax + delta + 0.5)
         if newMax < MIN_MAX_HEIGHT then newMax = MIN_MAX_HEIGHT end
-        if newMax > 2000 then newMax = 2000 end
+        if newMax > MAX_RESIZE_HEIGHT then newMax = MAX_RESIZE_HEIGHT end
         if newMax ~= BooshiesQuestLogDB.maxHeight then
             BooshiesQuestLogDB.maxHeight = newMax
             Refresh()
@@ -2205,7 +2230,7 @@ local function BuildUI()
     resizer:SetScript("OnMouseDown", function(self, button)
         if button ~= "LeftButton" then return end
         self._dragStartY = select(2, GetCursorPosition()) / UIParent:GetEffectiveScale()
-        self._dragStartMax = BooshiesQuestLogDB.maxHeight or 500
+        self._dragStartMax = BooshiesQuestLogDB.maxHeight or DEFAULT_MAX_HEIGHT
         self:SetScript("OnUpdate", dragUpdate)
     end)
 
@@ -2216,8 +2241,21 @@ local function BuildUI()
 
     frame.resizer = resizer
 
+end
+
+local function BuildUI()
+
+    if frame then return end
+
+    BuildMainFrame()
+    BuildHeader()
+    BuildHeaderButtons()
+    BuildScrollArea()
+    BuildResizer()
+
     RestorePosition()
     SavePosition()
+
 end
 
 local function UpdateSuperTrackState()
