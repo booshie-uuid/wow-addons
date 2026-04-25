@@ -857,25 +857,36 @@ local FLASH_DURATION = 0.8
 -- =============================================================================
 
 local function SavePosition()
+
     if not frame then return end
+
     local right = frame:GetRight()
     local top = frame:GetTop()
     if not right or not top then return end
+
     local parent = UIParent
     local uiRight = parent:GetRight() or 0
     local uiTop = parent:GetTop() or 0
+
     local x = right - uiRight
     local y = top - uiTop
+
     BooshiesQuestLogDB.point = { "TOPRIGHT", "UIParent", "TOPRIGHT", x, y }
+
     frame:ClearAllPoints()
     frame:SetPoint("TOPRIGHT", parent, "TOPRIGHT", x, y)
+
 end
 
 local function RestorePosition()
+
     frame:ClearAllPoints()
+
     local p = BooshiesQuestLogDB.point or DEFAULTS.point
     local rel = _G[p[2]] or UIParent
+
     frame:SetPoint(p[1], rel, p[3], p[4], p[5])
+
 end
 
 local HEADER_OFFSET = 46
@@ -888,13 +899,18 @@ local Refresh
 -- =============================================================================
 
 local function RelayoutLayout(layout)
+
     layout = layout or {}
+
     local y = 0
     local count = #layout
     local trailingGap = 0
+
     for i, item in ipairs(layout) do
         local isSection = item._kind == "section"
+
         if not isSection and not item.expanded then item:SetHeight(ROW_HEIGHT) end
+
         if item.separator then
             if item._kind == "section" then
                 local nextItem = layout[i + 1]
@@ -904,15 +920,20 @@ local function RelayoutLayout(layout)
                 item.separator:SetShown(true)
             end
         end
+
+        -- Sections after the first get a small gap above them.
         local gapBefore = 0
         if isSection and i > 1 then gapBefore = 4 end
         y = y + gapBefore
+
         item:ClearAllPoints()
         item:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -y)
         item:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, -y)
+
         trailingGap = isSection and 2 or ROW_GAP
         y = y + item:GetHeight() + trailingGap
     end
+
     local contentHeight = math.max(y - trailingGap, 1)
     content:SetHeight(contentHeight)
 
@@ -923,8 +944,10 @@ local function RelayoutLayout(layout)
     local viewport = finalHeight - HEADER_OFFSET - BOTTOM_PAD
     local bar = scrollFrame.ScrollBar or _G["BooshiesQuestLogScrollScrollBar"]
     local barVisible = false
+
     if bar then
         barVisible = contentHeight > viewport + 0.5
+
         if barVisible then
             scrollFrame._bqlForceHidden = false
             bar:Show()
@@ -942,21 +965,24 @@ local function RelayoutLayout(layout)
     content:SetWidth(math.max(contentWidth, 1))
 
     if scrollFrame.UpdateScrollChildRect then scrollFrame:UpdateScrollChildRect() end
+
 end
 
--- Adjusts the scroll frame so `child` (any frame anchored inside the content panel)
--- is fully visible. Does nothing if it already is. 
--- Picks the smallest change that would bring the entire child into view, aligning
--- to the top edge if scrolling up, to the bottom edge if scrolling down.
+-- Picks the smallest scroll change that brings `child` fully into view: aligns
+-- to the top edge if scrolling up, to the bottom edge if scrolling down. No-op
+-- if the child is already fully visible.
 local function ScrollIntoView(child, padding)
+
     if not child or not scrollFrame or not content then return end
     if not scrollFrame.SetVerticalScroll then return end
+
     local cTop = content:GetTop()
     local rTop = child:GetTop()
     local rBottom = child:GetBottom()
     if not cTop or not rTop or not rBottom then return end
 
     padding = padding or ROW_GAP
+
     local y = cTop - rTop                -- child's top offset within content
     local h = rTop - rBottom             -- child's height
     local viewport = scrollFrame:GetHeight() or 0
@@ -974,7 +1000,9 @@ local function ScrollIntoView(child, padding)
 
     if target < 0 then target = 0 end
     if target > maxScroll then target = maxScroll end
+
     scrollFrame:SetVerticalScroll(target)
+
 end
 
 
@@ -1001,25 +1029,36 @@ local OBJ_LINE_GAP = 3
 local LINE_VCENTER = 5
 
 local function SplitObjective(obj)
+
     local text = obj.text or ""
+
+    -- "5/10 Slay Murlocs" form: pull the count off the front and return the
+    -- remainder as the description.
     local n, m, rest = text:match("^(%d+)%s*/%s*(%d+)%s+(.*)$")
     if n and m and rest and rest ~= "" then
         return rest, n .. "/" .. m
     end
+
+    -- Otherwise synthesise "have/need" from the structured fields if present.
     if obj.numRequired and obj.numRequired > 0 then
         return text, (obj.numFulfilled or 0) .. "/" .. obj.numRequired
     end
+
     return text, nil
+
 end
 
 local measureFS
 local function MeasureText(text)
+
     if not measureFS then
         measureFS = UIParent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         measureFS:Hide()
     end
+
     measureFS:SetText(text or "")
     return measureFS:GetStringWidth() or 0
+
 end
 
 local function ExpandRow(row)
