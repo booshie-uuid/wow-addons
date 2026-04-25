@@ -332,6 +332,40 @@ end
 
 
 -- =============================================================================
+-- QUEST VISIBILITY & PROGRESS
+-- =============================================================================
+
+local function GetQuestProgress(questID)
+    return ComputeProgress(C_QuestLog.GetQuestObjectives(questID))
+end
+
+local function IsQuestWatched(questID)
+
+    if C_QuestLog and C_QuestLog.GetQuestWatchType then
+        local wt = C_QuestLog.GetQuestWatchType(questID)
+        if wt and wt ~= 0 then return true end
+    end
+
+    return false
+
+end
+
+local function ShouldShow(questID, snapshot, poiSet, currentMapID, currentMapName)
+
+    local info = snapshot[questID]
+    if not info then return false end
+    if not IsQuestWatched(questID) then return false end
+
+    if not BooshiesQuestLogDB.filterByZone then return true end
+    if poiSet[questID] then return true end
+    if BooshiesQuestLogDB.alwaysShowCampaign and IsCampaign(info) then return true end
+
+    return false
+
+end
+
+
+-- =============================================================================
 -- ACHIEVEMENT DATA
 -- =============================================================================
 
@@ -790,55 +824,35 @@ end
 
 
 -- =============================================================================
--- QUEST VISIBILITY & PROGRESS
--- =============================================================================
-
-local function GetQuestProgress(questID)
-    return ComputeProgress(C_QuestLog.GetQuestObjectives(questID))
-end
-
-local function IsQuestWatched(questID)
-
-    if C_QuestLog and C_QuestLog.GetQuestWatchType then
-        local wt = C_QuestLog.GetQuestWatchType(questID)
-        if wt and wt ~= 0 then return true end
-    end
-
-    return false
-
-end
-
-local function ShouldShow(questID, snapshot, poiSet, currentMapID, currentMapName)
-
-    local info = snapshot[questID]
-    if not info then return false end
-    if not IsQuestWatched(questID) then return false end
-
-    if not BooshiesQuestLogDB.filterByZone then return true end
-    if poiSet[questID] then return true end
-    if BooshiesQuestLogDB.alwaysShowCampaign and IsCampaign(info) then return true end
-
-    return false
-
-end
-
-
--- =============================================================================
 -- UI CONSTANTS & STATE
 -- =============================================================================
 
+-- Row Layout
 local ROW_HEIGHT = 26
 local ROW_GAP = 6
 local BAR_HEIGHT = 3
 local BAR_BOTTOM_PAD = 3
+
+-- Frame Chrome
+local HEADER_OFFSET = 46
+local BOTTOM_PAD = 16
+
+-- Resize Limits
 local MIN_MAX_HEIGHT = 150
 local MAX_RESIZE_HEIGHT = 2000
 local DEFAULT_MAX_HEIGHT = 500
 
+-- Frame References (assigned in BuildUI)
 local frame, titleText, zoneText, content, scrollFrame, settingsFrame
+
+-- Forward Declarations (assigned later in the file)
 local ToggleSuperTrack
+local Refresh
+
+-- Row Pool
 local activeRows, rowPool = {}, {}
 
+-- Scroll Pin
 -- After a row click, debounced WoW events (QUEST_LOG_UPDATE, BAG_UPDATE_DELAYED,
 -- etc.) often trigger another Refresh ~50ms later, and the second layout pass
 -- can shift content slightly (lazy text measurement, scrollbar appear/disappear).
@@ -847,6 +861,7 @@ local activeRows, rowPool = {}, {}
 local pendingScrollKey, pendingScrollExpiresAt
 local SCROLL_PIN_WINDOW = 0.3
 
+-- Newly-Tracked Detection
 local previousTrackedKeys
 local pendingFlashKeys = {}
 local FLASH_DURATION = 0.8
@@ -888,10 +903,6 @@ local function RestorePosition()
     frame:SetPoint(p[1], rel, p[3], p[4], p[5])
 
 end
-
-local HEADER_OFFSET = 46
-local BOTTOM_PAD = 16
-local Refresh
 
 
 -- =============================================================================
@@ -1019,6 +1030,7 @@ local function CollapseRow(row)
 
 end
 
+-- Objective Layout
 local OBJ_LEFT_INDENT = 3
 local OBJ_RIGHT_MARGIN = 26
 local COL_MARKER_W = 14
