@@ -15,10 +15,9 @@ local function safeCall(label, fn, ...)
     return ok
 end
 
--- Averages progress across a list of objective-shaped entries.
--- Each entry may carry { finished, numFulfilled, numRequired }; entries lacking
--- progress info still count toward the denominator so the average matches what
--- a user would expect ("3 of 5 done" with 2 unknowns reads as 3/5, not 3/3).
+-- Entries lacking progress info still count toward the denominator so the
+-- average matches what a user would expect ("3 of 5 done" with 2 unknowns
+-- reads as 3/5, not 3/3).
 local function ComputeProgress(list)
     if not list or #list == 0 then return 0, false end
     local sum, count = 0, 0
@@ -114,6 +113,7 @@ local UI_COLORS = {
     -- Row Backgrounds
     superTrackBg     = { 1.0,  0.82, 0.0,  0.12 },
     completedBg      = { 0.12, 0.35, 0.15, 0.45 },
+    flashHighlight   = { 1.0,  0.85, 0.3,  0.6  },
 
     -- Progress Bar
     barBg            = { 0.22, 0.22, 0.24, 0.95 },
@@ -281,11 +281,10 @@ local function GetTrackedAchievementList()
 
 end
 
--- Returns the achievement's best display text plus its completion state.
 -- Blizzard's `GetAchievementCriteriaInfo` returns an empty `cstr` for single-
--- step / "is the achievement itself" achievements (e.g. raid boss kills);
--- the achievement-level `description` field is the human-readable label in
--- those cases, with `name` as a last-resort fallback.
+-- step achievements (e.g. raid boss kills). The achievement-level `description`
+-- is the human-readable label in those cases, with `name` as a last-resort
+-- fallback.
 local function GetAchievementHeader(achID)
     if not GetAchievementInfo then return "", false end
     local _, name, _, completed, _, _, _, description = GetAchievementInfo(achID)
@@ -322,7 +321,7 @@ end
 
 local function GetAchievementProgress(achID)
     -- Preserve original semantics: zero-criteria achievements report
-    -- (1, true) when complete, (0, false) when not — so the progress bar
+    -- (1, true) when complete, (0, false) when not, so the progress bar
     -- stays hidden on incomplete single-step achievements.
     local rawNum = (_G.GetAchievementNumCriteria and GetAchievementNumCriteria(achID)) or 0
     if rawNum == 0 then
@@ -651,6 +650,10 @@ local activeRows, rowPool = {}, {}
 -- at the end of each refresh within that window.
 local pendingScrollKey, pendingScrollExpiresAt
 local SCROLL_PIN_WINDOW = 0.3
+
+local previousTrackedKeys
+local pendingFlashKeys = {}
+local FLASH_DURATION = 0.8
 
 local function SavePosition()
     if not frame then return end
@@ -1212,6 +1215,24 @@ local function RowKey(row)
     return nil
 end
 
+local function SectionForRowKey(key)
+
+    if not key then return nil end
+
+    if key:sub(1, 4) == "ach:"        then return "achievements" end
+    if key:sub(1, 7) == "recipe:"     then return "recipes"      end
+    if key:sub(1, 9) == "activity:"   then return "activities"   end
+    if key:sub(1, 11) == "initiative:" then return "initiatives"  end
+
+    if key:sub(1, 6) == "quest:" then
+        local qid = tonumber(key:sub(7))
+        if qid then return GetClassification(qid) end
+    end
+
+    return nil
+
+end
+
 local function OnRowClick(row)
     local key = RowKey(row)
     if not key then return end
@@ -1241,6 +1262,28 @@ local function CreateRow()
     completeBg:SetColorTexture(unpack(UI_COLORS.completedBg))
     completeBg:Hide()
     row.completeBg = completeBg
+
+    local flashBg = row:CreateTexture(nil, "OVERLAY")
+    flashBg:SetAllPoints(row)
+    flashBg:SetColorTexture(unpack(UI_COLORS.flashHighlight))
+    flashBg:Hide()
+    row.flashBg = flashBg
+
+    local flashAnim = flashBg:CreateAnimationGroup()
+    local fade = flashAnim:CreateAnimation("Alpha")
+    fade:SetFromAlpha(1)
+    fade:SetToAlpha(0)
+    fade:SetDuration(FLASH_DURATION)
+    fade:SetSmoothing("OUT")
+    flashAnim:SetScript("OnFinished", function() flashBg:Hide() end)
+    row.flashAnim = flashAnim
+
+    function row:FlashAttention()
+        self.flashAnim:Stop()
+        self.flashBg:SetAlpha(1)
+        self.flashBg:Show()
+        self.flashAnim:Play()
+    end
 
     local sep = row:CreateTexture(nil, "ARTWORK")
     sep:SetColorTexture(unpack(UI_COLORS.rowSeparator))
@@ -1435,6 +1478,8 @@ local function ReleaseRow(row)
     CollapseRow(row)
     row:Hide()
     if row.superBg then row.superBg:Hide() end
+    if row.flashAnim then row.flashAnim:Stop() end
+    if row.flashBg then row.flashBg:Hide() end
     row.questID = nil
     row.achievementID = nil
     row.recipeID = nil
@@ -1564,7 +1609,66 @@ local function BuildQuestGroups(mapID, mapName)
         end
     end
 
-    return groups, total
+    return groups, total, snapshot
+
+end
+
+local function CollectTrackedKeys(snapshot)
+
+    local set = {}
+
+    for qid in pairs(snapshot) do
+        if IsQuestWatched(qid) then
+            set["quest:" .. qid] = true
+        end
+    end
+
+    for _, id in ipairs(GetTrackedAchievementList())   do set["ach:"        .. id] = true end
+    for _, id in ipairs(GetTrackedRecipeList())        do set["recipe:"     .. id] = true end
+    for _, id in ipairs(GetTrackedMonthlyActivities()) do set["activity:"   .. id] = true end
+    for _, id in ipairs(GetTrackedInitiativeTasks())   do set["initiative:" .. id] = true end
+
+    return set
+
+end
+
+local function DetectAndShowNewlyTracked(currentKeys)
+
+    if not previousTrackedKeys then
+        -- First refresh after load. Capture the baseline silently so we do
+        -- not fire for every already-tracked item.
+        previousTrackedKeys = currentKeys
+        return
+    end
+
+    BooshiesQuestLogDB.expandedKeys      = BooshiesQuestLogDB.expandedKeys      or {}
+    BooshiesQuestLogDB.collapsedSections = BooshiesQuestLogDB.collapsedSections or {}
+
+    local lastNewKey
+    for key in pairs(currentKeys) do
+        if not previousTrackedKeys[key] then
+            -- Mark expanded even if the zone filter is currently hiding this
+            -- item, so it appears expanded next time it becomes visible.
+            BooshiesQuestLogDB.expandedKeys[key] = true
+
+            local section = SectionForRowKey(key)
+            if section ~= nil then
+                BooshiesQuestLogDB.collapsedSections[section] = nil
+            end
+
+            pendingFlashKeys[key] = true
+            lastNewKey = key
+        end
+    end
+
+    -- Hidden-by-filter items have no matching row in activeRows, so
+    -- ApplyPendingScroll naturally no-ops for them.
+    if lastNewKey then
+        pendingScrollKey = lastNewKey
+        pendingScrollExpiresAt = GetTime() + SCROLL_PIN_WINDOW
+    end
+
+    previousTrackedKeys = currentKeys
 
 end
 
@@ -1802,15 +1906,38 @@ local function ApplyPendingScroll()
 
     local target
     for _, r in ipairs(activeRows) do
-        if RowKey(r) == pendingScrollKey then target = r; break end
+        if RowKey(r) == pendingScrollKey then
+            target = r
+            break
+        end
     end
     if not target then
         for _, h in ipairs(activeSections) do
-            if RowKey(h) == pendingScrollKey then target = h; break end
+            if RowKey(h) == pendingScrollKey then
+                target = h
+                break
+            end
         end
     end
 
     if target then ScrollIntoView(target) end
+
+end
+
+local function ApplyPendingFlashes()
+
+    if not next(pendingFlashKeys) then return end
+
+    for _, row in ipairs(activeRows) do
+        local key = RowKey(row)
+        if key and pendingFlashKeys[key] and row.FlashAttention then
+            row:FlashAttention()
+        end
+    end
+
+    -- Items hidden by the zone filter never matched a row above and are
+    -- intentionally dropped here. Anything pending now is stale.
+    pendingFlashKeys = {}
 
 end
 
@@ -1825,7 +1952,7 @@ local function RefreshUI()
     local mapID = GetPlayerZoneMapID()
     local mapName = GetMapName(mapID) or "Unknown"
 
-    local groups, total = BuildQuestGroups(mapID, mapName)
+    local groups, total, snapshot = BuildQuestGroups(mapID, mapName)
     titleText:SetText(("Quests (%d)"):format(total))
 
     if BooshiesQuestLogDB.collapsed then
@@ -1833,6 +1960,8 @@ local function RefreshUI()
         ApplyCollapsedChrome()
         return
     end
+
+    DetectAndShowNewlyTracked(CollectTrackedKeys(snapshot))
 
     ApplyExpandedChrome()
     zoneText:SetText(mapName)
@@ -1852,6 +1981,7 @@ local function RefreshUI()
     ApplyExpansionState(layout)
     RelayoutLayout(layout)
     ApplyPendingScroll()
+    ApplyPendingFlashes()
 
 end
 
