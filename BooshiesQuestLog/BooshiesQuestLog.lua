@@ -1463,7 +1463,9 @@ end
 -- =============================================================================
 
 local function RowKey(row)
+
     if not row then return nil end
+
     if row.itemKind == "achievement" and row.achievementID then
         return "ach:" .. row.achievementID
     end
@@ -1482,7 +1484,9 @@ local function RowKey(row)
     if row._kind == "section" and row.classification ~= nil then
         return "section:" .. tostring(row.classification)
     end
+
     return nil
+
 end
 
 local function SectionForRowKey(key)
@@ -1504,20 +1508,26 @@ local function SectionForRowKey(key)
 end
 
 local function OnRowClick(row)
+
     local key = RowKey(row)
     if not key then return end
+
     BooshiesQuestLogDB.expandedKeys = BooshiesQuestLogDB.expandedKeys or {}
     if BooshiesQuestLogDB.expandedKeys[key] then
         BooshiesQuestLogDB.expandedKeys[key] = nil
     else
         BooshiesQuestLogDB.expandedKeys[key] = true
     end
+
     pendingScrollKey = key
     pendingScrollExpiresAt = GetTime() + SCROLL_PIN_WINDOW
+
     Refresh()
+
 end
 
 local function CreateRow()
+
     local row = CreateFrame("Frame", nil, content)
     row:SetHeight(ROW_HEIGHT)
 
@@ -1698,12 +1708,18 @@ local function CreateRow()
     btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     btn:SetScript("OnEnter", function() hover:Show() end)
     btn:SetScript("OnLeave", function() hover:Hide() end)
+
     btn:SetScript("OnClick", function(self, button)
+
         if not row.questID and not row.achievementID and not row.recipeID and not row.activityID and not row.initiativeID then return end
+
+        -- Ctrl+Left: super-track this quest.
         if IsControlKeyDown() and button == "LeftButton" then
             if row.questID then ToggleSuperTrack(row.questID) end
             return
         end
+
+        -- Ctrl+Right: dump debug metadata (debug mode only).
         if IsControlKeyDown() and button == "RightButton" then
             if BooshiesQuestLogDB.debug then
                 if row.questID then
@@ -1714,10 +1730,14 @@ local function CreateRow()
             end
             return
         end
+
+        -- Shift+Left: untrack.
         if IsShiftKeyDown() and button == "LeftButton" then
             UntrackRow(row)
             return
         end
+
+        -- Right: open the appropriate details dialog for this row's kind.
         if button == "RightButton" then
             if row.questID then
                 OpenQuestDetails(row.questID)
@@ -1732,10 +1752,14 @@ local function CreateRow()
             end
             return
         end
+
+        -- Plain left click: toggle expand/collapse.
         OnRowClick(row)
+
     end)
 
     return row
+
 end
 
 local function AcquireRow()
@@ -1745,18 +1769,23 @@ local function AcquireRow()
 end
 
 local function ReleaseRow(row)
+
     CollapseRow(row)
     row:Hide()
+
     if row.superBg then row.superBg:Hide() end
     if row.flashAnim then row.flashAnim:Stop() end
     if row.flashBg then row.flashBg:Hide() end
+
     row.questID = nil
     row.achievementID = nil
     row.recipeID = nil
     row.activityID = nil
     row.initiativeID = nil
     row.itemKind = nil
+
     table.insert(rowPool, row)
+
 end
 
 
@@ -1768,6 +1797,7 @@ local sectionPool, activeSections = {}, {}
 local SECTION_HEIGHT = 22
 
 local function CreateSectionHeader()
+
     local hdr = CreateFrame("Button", nil, content)
     hdr:SetHeight(SECTION_HEIGHT)
     hdr._kind = "section"
@@ -1806,16 +1836,22 @@ local function CreateSectionHeader()
     hdr.count = count
 
     hdr:SetScript("OnClick", function(self)
+
         local cls = self.classification
         if cls == nil then return end
+
         BooshiesQuestLogDB.collapsedSections = BooshiesQuestLogDB.collapsedSections or {}
         BooshiesQuestLogDB.collapsedSections[cls] = not BooshiesQuestLogDB.collapsedSections[cls]
+
         pendingScrollKey = RowKey(self)
         pendingScrollExpiresAt = GetTime() + SCROLL_PIN_WINDOW
+
         Refresh()
+
     end)
 
     return hdr
+
 end
 
 local function AcquireSection()
@@ -1825,9 +1861,12 @@ local function AcquireSection()
 end
 
 local function ReleaseSection(hdr)
+
     hdr:Hide()
     hdr.classification = nil
+
     table.insert(sectionPool, hdr)
+
 end
 
 local function RenderSection(spec)
