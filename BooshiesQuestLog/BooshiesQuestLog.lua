@@ -1062,6 +1062,7 @@ local function MeasureText(text)
 end
 
 local function ExpandRow(row)
+
     row.expanded = true
     row.arrow:SetTexture(UI_TEXTURES.minusButton)
 
@@ -1081,12 +1082,15 @@ local function ExpandRow(row)
         objectives = C_QuestLog.GetQuestObjectives(row.questID) or {}
     end
 
+    -- Pre-measure the widest count string so the description column lines up.
     local parts = {}
     local maxCountW = 0
     for i, obj in ipairs(objectives) do
         local desc, count = SplitObjective(obj)
         if obj.finished then count = nil end
+
         parts[i] = { desc = desc, count = count, finished = obj.finished }
+
         if count and count ~= "" then
             local w = MeasureText(count)
             if w > maxCountW then maxCountW = w end
@@ -1108,9 +1112,12 @@ local function ExpandRow(row)
     row.objFrame:Show()
 
     local function getEntry(i)
+
         local e = row.objLines[i]
+
         if not (type(e) == "table" and e.desc) then
             if e and type(e.Hide) == "function" then pcall(e.Hide, e) end
+
             e = {}
             e.tex = row.objFrame:CreateTexture(nil, "OVERLAY")
             e.tex:SetSize(10, 10)
@@ -1122,16 +1129,20 @@ local function ExpandRow(row)
             e.desc:SetWordWrap(true)
             row.objLines[i] = e
         end
+
         return e
+
     end
 
     local function placeObj(i, y, part)
+
         local e = getEntry(i)
         local isFinished = part.finished
         local color = isFinished and UI_COLORS.objectiveFinished or UI_COLORS.objectiveUnfinished
 
         e.tex:ClearAllPoints()
         e.dot:ClearAllPoints()
+
         if isFinished then
             e.tex:SetPoint("CENTER", row.objFrame, "TOPLEFT", COL_MARKER_W / 2, -y - LINE_VCENTER)
             e.tex:SetTexture(UI_TEXTURES.checkmark)
@@ -1166,6 +1177,7 @@ local function ExpandRow(row)
         e.desc:Show()
 
         return y + e.desc:GetStringHeight() + OBJ_LINE_GAP
+
     end
 
     local y = 0
@@ -1175,11 +1187,13 @@ local function ExpandRow(row)
         y = placeObj(i, y, part)
     end
 
+    -- Quests get an extra "Ready to turn in" line once their objectives are all done.
     if row.itemKind ~= "achievement" and row.questID and C_QuestLog.IsComplete(row.questID) then
         idx = idx + 1
         y = placeObj(idx, y, { desc = "Ready to turn in", count = nil, finished = true })
     end
 
+    -- Hide any pooled entries left over from a previous expansion with more rows.
     for i = idx + 1, #row.objLines do
         local e = row.objLines[i]
         if type(e) == "table" then
@@ -1193,6 +1207,7 @@ local function ExpandRow(row)
     local totalY = math.max(y - OBJ_LINE_GAP, 1)
     row.objFrame:SetHeight(totalY)
     row:SetHeight(ROW_HEIGHT + OBJ_TOP_PAD + totalY + OBJ_BOTTOM_PAD)
+
 end
 
 
