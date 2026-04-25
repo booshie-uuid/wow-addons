@@ -1531,14 +1531,7 @@ local function RenderSection(spec)
 
 end
 
-local refreshImpl = function()
-    if not frame then return end
-    if not BooshiesQuestLogDB.enabled then frame:Hide(); return end
-    if settingsFrame and settingsFrame:IsShown() then return end
-    frame:Show()
-
-    local mapID = GetPlayerZoneMapID()
-    local mapName = GetMapName(mapID) or "Unknown"
+local function BuildQuestGroups(mapID, mapName)
 
     local snapshot = SnapshotQuestLog()
     AddTaskQuestsToSnapshot(snapshot, mapID)
@@ -1546,6 +1539,7 @@ local refreshImpl = function()
 
     local groups = {}
     local total = 0
+
     for qid, info in pairs(snapshot) do
         if ShouldShow(qid, snapshot, poiSet, mapID, mapName) then
             local cls = GetClassification(qid)
@@ -1560,23 +1554,43 @@ local refreshImpl = function()
         end
     end
 
-    titleText:SetText(("Quests (%d)"):format(total))
+    return groups, total
 
-    if BooshiesQuestLogDB.collapsed then
-        for _, row in ipairs(activeRows) do ReleaseRow(row) end
-        wipe(activeRows)
-        for _, hdr in ipairs(activeSections) do ReleaseSection(hdr) end
-        wipe(activeSections)
-        if scrollFrame then scrollFrame:Hide() end
-        if frame.filterBtn then frame.filterBtn:Hide() end
-        if frame.cogBtn then frame.cogBtn:Hide() end
-        if frame.collapseAllBtn then frame.collapseAllBtn:Hide() end
-        if zoneText then zoneText:Hide() end
-        if frame.resizer then frame.resizer:Hide() end
-        local titleW = (titleText:GetStringWidth() or 80) + 20
-        frame:SetSize(math.max(titleW, 100), 30)
-        return
+end
+
+local function SortQuestGroups(groups)
+
+    for _, list in pairs(groups) do
+        table.sort(list, function(a, b) return (a.title or "") < (b.title or "") end)
     end
+
+end
+
+local function ReleaseAllRowsAndSections()
+
+    for _, row in ipairs(activeRows) do ReleaseRow(row) end
+    wipe(activeRows)
+
+    for _, hdr in ipairs(activeSections) do ReleaseSection(hdr) end
+    wipe(activeSections)
+
+end
+
+local function ApplyCollapsedChrome()
+
+    if scrollFrame then scrollFrame:Hide() end
+    if frame.filterBtn then frame.filterBtn:Hide() end
+    if frame.cogBtn then frame.cogBtn:Hide() end
+    if frame.collapseAllBtn then frame.collapseAllBtn:Hide() end
+    if zoneText then zoneText:Hide() end
+    if frame.resizer then frame.resizer:Hide() end
+
+    local titleW = (titleText:GetStringWidth() or 80) + 20
+    frame:SetSize(math.max(titleW, 100), 30)
+
+end
+
+local function ApplyExpandedChrome()
 
     if scrollFrame and not scrollFrame:IsShown() then scrollFrame:Show() end
     if frame.filterBtn and not frame.filterBtn:IsShown() then frame.filterBtn:Show() end
@@ -1584,21 +1598,12 @@ local refreshImpl = function()
     if frame.collapseAllBtn and not frame.collapseAllBtn:IsShown() then frame.collapseAllBtn:Show() end
     if zoneText and not zoneText:IsShown() then zoneText:Show() end
     if frame.resizer and not frame.resizer:IsShown() then frame.resizer:Show() end
+
     frame:SetWidth(BooshiesQuestLogDB.width or 280)
 
-    zoneText:SetText(mapName)
+end
 
-    for _, list in pairs(groups) do
-        table.sort(list, function(a, b) return (a.title or "") < (b.title or "") end)
-    end
-
-    for _, row in ipairs(activeRows) do ReleaseRow(row) end
-    wipe(activeRows)
-    for _, hdr in ipairs(activeSections) do ReleaseSection(hdr) end
-    wipe(activeSections)
-
-    local layout = {}
-    local superTracked = C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID and C_SuperTrack.GetSuperTrackedQuestID() or 0
+local function RenderQuestSections(layout, groups, superTracked)
 
     for _, cls in ipairs(CLASSIFICATION_ORDER) do
         RenderSection({
@@ -1632,7 +1637,12 @@ local refreshImpl = function()
         })
     end
 
+end
+
+local function RenderAchievementSection(layout)
+
     local hideAchievements = BooshiesQuestLogDB.filterByZone and not BooshiesQuestLogDB.alwaysShowAchievements
+
     RenderSection({
         classification = "achievements",
         title          = "Achievements",
@@ -1663,6 +1673,10 @@ local refreshImpl = function()
         end,
     })
 
+end
+
+local function RenderRecipeSection(layout)
+
     RenderSection({
         classification = "recipes",
         title          = "Crafting",
@@ -1686,6 +1700,10 @@ local refreshImpl = function()
 
         end,
     })
+
+end
+
+local function RenderActivitySection(layout)
 
     RenderSection({
         classification = "activities",
@@ -1714,6 +1732,10 @@ local refreshImpl = function()
         end,
     })
 
+end
+
+local function RenderInitiativeSection(layout)
+
     RenderSection({
         classification = "initiatives",
         title          = "Endeavours",
@@ -1740,37 +1762,90 @@ local refreshImpl = function()
         end,
     })
 
-    local expandedKeys = BooshiesQuestLogDB.expandedKeys or {}
-    if next(expandedKeys) then
-        RelayoutLayout(layout)
-        for _, row in ipairs(activeRows) do
-            if expandedKeys[RowKey(row)] then
-                ExpandRow(row)
-            end
-        end
-    end
-
-    RelayoutLayout(layout)
-
-    if pendingScrollKey then
-        if pendingScrollExpiresAt and GetTime() > pendingScrollExpiresAt then
-            pendingScrollKey, pendingScrollExpiresAt = nil, nil
-        else
-            local target
-            for _, r in ipairs(activeRows) do
-                if RowKey(r) == pendingScrollKey then target = r; break end
-            end
-            if not target then
-                for _, h in ipairs(activeSections) do
-                    if RowKey(h) == pendingScrollKey then target = h; break end
-                end
-            end
-            if target then ScrollIntoView(target) end
-        end
-    end
 end
 
-Refresh = function() safeCall("Refresh", refreshImpl) end
+local function ApplyExpansionState(layout)
+
+    local expandedKeys = BooshiesQuestLogDB.expandedKeys or {}
+    if not next(expandedKeys) then return end
+
+    -- First layout pass so ExpandRow has resolved frame positions to measure from
+    -- before it computes objective wraps and final row heights.
+    RelayoutLayout(layout)
+
+    for _, row in ipairs(activeRows) do
+        if expandedKeys[RowKey(row)] then
+            ExpandRow(row)
+        end
+    end
+
+end
+
+local function ApplyPendingScroll()
+
+    if not pendingScrollKey then return end
+
+    if pendingScrollExpiresAt and GetTime() > pendingScrollExpiresAt then
+        pendingScrollKey, pendingScrollExpiresAt = nil, nil
+        return
+    end
+
+    local target
+    for _, r in ipairs(activeRows) do
+        if RowKey(r) == pendingScrollKey then target = r; break end
+    end
+    if not target then
+        for _, h in ipairs(activeSections) do
+            if RowKey(h) == pendingScrollKey then target = h; break end
+        end
+    end
+
+    if target then ScrollIntoView(target) end
+
+end
+
+local function RefreshUI()
+
+    if not frame then return end
+    if not BooshiesQuestLogDB.enabled then frame:Hide(); return end
+    if settingsFrame and settingsFrame:IsShown() then return end
+
+    frame:Show()
+
+    local mapID = GetPlayerZoneMapID()
+    local mapName = GetMapName(mapID) or "Unknown"
+
+    local groups, total = BuildQuestGroups(mapID, mapName)
+    titleText:SetText(("Quests (%d)"):format(total))
+
+    if BooshiesQuestLogDB.collapsed then
+        ReleaseAllRowsAndSections()
+        ApplyCollapsedChrome()
+        return
+    end
+
+    ApplyExpandedChrome()
+    zoneText:SetText(mapName)
+
+    SortQuestGroups(groups)
+    ReleaseAllRowsAndSections()
+
+    local layout = {}
+    local superTracked = C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID and C_SuperTrack.GetSuperTrackedQuestID() or 0
+
+    RenderQuestSections(layout, groups, superTracked)
+    RenderAchievementSection(layout)
+    RenderRecipeSection(layout)
+    RenderActivitySection(layout)
+    RenderInitiativeSection(layout)
+
+    ApplyExpansionState(layout)
+    RelayoutLayout(layout)
+    ApplyPendingScroll()
+
+end
+
+Refresh = function() safeCall("Refresh", RefreshUI) end
 
 local BLIZZARD_QUEST_MODULES = {
     "QuestObjectiveTracker",
