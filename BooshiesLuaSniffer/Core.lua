@@ -85,7 +85,6 @@ loader:SetScript("OnEvent", function(self, event, name)
 
     mergeDefaults()
     addon.EventCapture.init()
-    addon.UI.MainFrame.build()
 
     self:UnregisterEvent("ADDON_LOADED")
 
@@ -101,13 +100,13 @@ local function log(msg)
 end
 
 SLASH_BOOSHIESLUASNIFFER1 = "/sniff"
-SLASH_BOOSHIESLUASNIFFER2 = "/booshieslsniffer"
+SLASH_BOOSHIESLUASNIFFER2 = "/blsniff"
 SlashCmdList["BOOSHIESLUASNIFFER"] = function(msg)
 
     msg = (msg or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
 
     if msg == "" or msg == "toggle" then
-        addon.UI.MainFrame.toggle()
+        addon.EventCapture.toggleUI()
     elseif msg == "start" then
         addon.EventManager.start()
         log("capture started")

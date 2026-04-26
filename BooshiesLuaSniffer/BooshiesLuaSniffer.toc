@@ -12,6 +12,7 @@ EventCapture.lua
 UI\Theme.lua
 UI\ListPanel.lua
 UI\InfoBox.lua
-UI\MainFrame.lua
+UI\Window.lua
+UI\EventCaptureWindow.lua
 UI\EventList.lua
 UI\ExclusionList.lua

@@ -157,7 +157,17 @@ function EventCapture.init()
     executionOrder = settings.executionOrder and true or false
 
     addon.EventManager.subscribe(onEvent)
+    addon.UI.EventCaptureWindow.build()
 
+end
+
+
+--------------------------------------------------------------------------------
+-- UI
+--------------------------------------------------------------------------------
+
+function EventCapture.toggleUI()
+    addon.UI.EventCaptureWindow.toggle()
 end
 
 
