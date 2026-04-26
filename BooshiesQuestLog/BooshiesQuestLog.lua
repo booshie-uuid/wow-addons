@@ -439,113 +439,19 @@ end
 
 
 --------------------------------------------------------------------------------
--- SECTION LIFECYCLE
+-- SECTION CLICK
 --------------------------------------------------------------------------------
 
-local sectionPool, activeSections = {}, {}
-local SECTION_HEIGHT = 22
+local function onSectionClick(header)
 
-local function CreateSectionHeader()
+    addon.Core.getDB().collapsedSections = addon.Core.getDB().collapsedSections or {}
+    addon.Core.getDB().collapsedSections[header.classification] =
+        not addon.Core.getDB().collapsedSections[header.classification]
 
-    local hdr = CreateFrame("Button", nil, content)
-    hdr:SetHeight(SECTION_HEIGHT)
-    hdr.itemKind = "section"
-    hdr:RegisterForClicks("LeftButtonUp")
+    pendingScrollKey = addon.UI.TrackerEntry.keyFor(header)
+    pendingScrollExpiresAt = GetTime() + SCROLL_PIN_WINDOW
 
-    local stripe = hdr:CreateTexture(nil, "BACKGROUND")
-    stripe:SetAllPoints(hdr)
-    stripe:SetColorTexture(unpack(addon.UI.Theme.colors.sectionStripe))
-
-    local hdrSep = hdr:CreateTexture(nil, "ARTWORK")
-    hdrSep:SetColorTexture(unpack(addon.UI.Theme.colors.sectionSeparator))
-    hdrSep:SetHeight(1)
-    hdrSep:SetPoint("BOTTOMLEFT", hdr, "BOTTOMLEFT", 0, -math.floor(ROW_GAP / 2))
-    hdrSep:SetPoint("BOTTOMRIGHT", hdr, "BOTTOMRIGHT", 0, -math.floor(ROW_GAP / 2))
-    hdr.separator = hdrSep
-
-    local hover = hdr:CreateTexture(nil, "HIGHLIGHT")
-    hover:SetAllPoints(hdr)
-    hover:SetColorTexture(unpack(addon.UI.Theme.colors.sectionHover))
-
-    local arrow = hdr:CreateTexture(nil, "OVERLAY")
-    arrow:SetSize(12, 12)
-    arrow:SetPoint("LEFT", hdr, "LEFT", 4, 0)
-    arrow:SetTexture(addon.UI.Theme.textures.minusButton)
-    hdr.arrow = arrow
-
-    local title = hdr:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    title:SetPoint("LEFT", arrow, "RIGHT", 4, 0)
-    title:SetJustifyH("LEFT")
-    hdr.title = title
-
-    local count = hdr:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    count:SetPoint("RIGHT", hdr, "RIGHT", -6, 0)
-    count:SetJustifyH("RIGHT")
-    count:SetTextColor(unpack(addon.UI.Theme.colors.sectionCount))
-    hdr.count = count
-
-    hdr:SetScript("OnClick", function(self)
-
-        local cls = self.classification
-        if cls == nil then return end
-
-        addon.Core.getDB().collapsedSections = addon.Core.getDB().collapsedSections or {}
-        addon.Core.getDB().collapsedSections[cls] = not addon.Core.getDB().collapsedSections[cls]
-
-        pendingScrollKey = addon.UI.TrackerEntry.keyFor(self)
-        pendingScrollExpiresAt = GetTime() + SCROLL_PIN_WINDOW
-
-        Refresh()
-
-    end)
-
-    return hdr
-
-end
-
-local function AcquireSection()
-    local hdr = table.remove(sectionPool) or CreateSectionHeader()
-    hdr:Show()
-    return hdr
-end
-
-local function ReleaseSection(hdr)
-
-    hdr:Hide()
-    hdr.classification = nil
-
-    table.insert(sectionPool, hdr)
-
-end
-
-local function RenderSection(spec)
-
-    if not spec.items or #spec.items == 0 then return end
-
-    local hdr = AcquireSection()
-    hdr.classification = spec.classification
-    hdr.title:SetText(spec.title)
-    hdr.title:SetTextColor(unpack(addon.UI.Theme.colors.sectionTitle))
-
-    local collapsed = (addon.Core.getDB().collapsedSections or {})[spec.classification] and true or false
-
-    hdr.count:SetText(#spec.items)
-    hdr.arrow:SetTexture(collapsed and addon.UI.Theme.textures.plusButton or addon.UI.Theme.textures.minusButton)
-    hdr:SetHeight(SECTION_HEIGHT)
-
-    table.insert(activeSections, hdr)
-    table.insert(spec.layout, hdr)
-
-    if collapsed then return end
-
-    for _, item in ipairs(spec.items) do
-        local row = spec.populateEntry(item)
-        if row then
-            row:SetHeight(ROW_HEIGHT)
-            table.insert(addon.UI.TrackerEntry.active, row)
-            table.insert(spec.layout, row)
-        end
-    end
+    Refresh()
 
 end
 
@@ -653,8 +559,7 @@ local function ReleaseAllRowsAndSections()
     for _, row in ipairs(addon.UI.TrackerEntry.active) do addon.UI.TrackerEntry.release(row) end
     wipe(addon.UI.TrackerEntry.active)
 
-    for _, hdr in ipairs(activeSections) do ReleaseSection(hdr) end
-    wipe(activeSections)
+    addon.UI.TrackerSection.releaseAll()
 
 end
 
@@ -688,7 +593,7 @@ end
 local function RenderQuestSections(layout, groups, superTracked)
 
     for _, cls in ipairs(CLASSIFICATION_ORDER) do
-        RenderSection({
+        addon.UI.TrackerSection.render({
             classification = cls,
             title          = CLASSIFICATION_NAMES[cls] or ("Class " .. cls),
             items          = groups[cls],
@@ -725,7 +630,7 @@ local function RenderAchievementSection(layout)
 
     local hideAchievements = addon.Core.getDB().filterByZone and not addon.Core.getDB().alwaysShowAchievements
 
-    RenderSection({
+    addon.UI.TrackerSection.render({
         classification = "achievements",
         title          = "Achievements",
         items          = hideAchievements and {} or addon.Data.Achievements.getTracked(),
@@ -759,7 +664,7 @@ end
 
 local function RenderRecipeSection(layout)
 
-    RenderSection({
+    addon.UI.TrackerSection.render({
         classification = "recipes",
         title          = "Crafting",
         items          = addon.Core.getDB().filterByZone and {} or addon.Data.Recipes.getTracked(),
@@ -787,7 +692,7 @@ end
 
 local function RenderActivitySection(layout)
 
-    RenderSection({
+    addon.UI.TrackerSection.render({
         classification = "activities",
         title          = "Monthly",
         items          = addon.Core.getDB().filterByZone and {} or addon.Data.JournalActivities.getTracked(),
@@ -818,7 +723,7 @@ end
 
 local function RenderInitiativeSection(layout)
 
-    RenderSection({
+    addon.UI.TrackerSection.render({
         classification = "initiatives",
         title          = "Endeavours",
         items          = addon.Core.getDB().filterByZone and {} or addon.Data.NeighbourhoodActivities.getTracked(),
@@ -880,7 +785,7 @@ local function ApplyPendingScroll()
         end
     end
     if not target then
-        for _, h in ipairs(activeSections) do
+        for _, h in ipairs(addon.UI.TrackerSection.active) do
             if addon.UI.TrackerEntry.keyFor(h) == pendingScrollKey then
                 target = h
                 break
@@ -1293,6 +1198,11 @@ local function BuildUI()
         content   = content,
         onClick   = onEntryClick,
         onRelease = CollapseRow,
+    })
+
+    addon.UI.TrackerSection.init({
+        content = content,
+        onClick = onSectionClick,
     })
 
 end
