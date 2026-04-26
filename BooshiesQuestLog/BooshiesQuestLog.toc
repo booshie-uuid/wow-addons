@@ -11,5 +11,6 @@ Util.lua
 BlizzardInterface.lua
 Debug.lua
 Data\Quests.lua
+Data\Achievements.lua
 UI\Theme.lua
 BooshiesQuestLog.lua
