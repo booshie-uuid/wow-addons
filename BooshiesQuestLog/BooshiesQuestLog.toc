@@ -13,5 +13,7 @@ Debug.lua
 Data\Quests.lua
 Data\Achievements.lua
 Data\Recipes.lua
+Data\JournalActivities.lua
+Data\NeighbourhoodActivities.lua
 UI\Theme.lua
 BooshiesQuestLog.lua
