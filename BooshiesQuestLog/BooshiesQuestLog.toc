@@ -19,5 +19,6 @@ Data\NeighbourhoodActivities.lua
 UI\Theme.lua
 UI\TrackerEntry.lua
 UI\TrackerSection.lua
+UI\ObjectivePanel.lua
 UI\TrackerWindow.lua
 BooshiesQuestLog.lua
