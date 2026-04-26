@@ -16,7 +16,6 @@ local DEFAULTS = {
     alwaysShowCampaign     = true,
     alwaysShowAchievements = true,
     debug                  = false,
-    includeWorldQuests     = false,
     hideBlizzardTracker    = true,
     point                  = { "TOPRIGHT", "UIParent", "TOPRIGHT", -20, -200 },
     width                  = 280,

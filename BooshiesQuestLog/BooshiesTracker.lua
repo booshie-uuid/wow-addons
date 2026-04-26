@@ -63,7 +63,6 @@ local DATA_MODULES = {
     "Quests", "Achievements", "Recipes", "JournalActivities", "NeighbourhoodActivities",
 }
 
-
 -- LAYOUT & SCROLL --------------------------------------------------------------
 
 local function relayoutLayout(layout)
@@ -172,7 +171,6 @@ local function scrollIntoView(child, padding)
 
 end
 
-
 -- COLLECT ----------------------------------------------------------------------
 
 local function collectVisibleItems()
@@ -229,7 +227,6 @@ local function countQuests(items)
     return n
 
 end
-
 
 -- TRACKED-KEY DETECTION --------------------------------------------------------
 
@@ -290,7 +287,6 @@ local function uncollapseSectionsForFlashKeys(items)
 
 end
 
-
 -- CHROME -----------------------------------------------------------------------
 
 local function applyCollapsedChrome()
@@ -319,7 +315,6 @@ local function applyExpandedChrome()
     frame:SetWidth(addon.Core.getDB().width or 280)
 
 end
-
 
 -- RENDER -----------------------------------------------------------------------
 
@@ -358,7 +353,6 @@ local function releaseAllRowsAndSections()
     addon.UI.TrackerSection.releaseAll()
 
 end
-
 
 -- POST-LAYOUT PASSES -----------------------------------------------------------
 
@@ -425,7 +419,6 @@ local function applyPendingFlashes()
     pendingFlashKeys = {}
 
 end
-
 
 -- MAIN PIPELINE ----------------------------------------------------------------
 

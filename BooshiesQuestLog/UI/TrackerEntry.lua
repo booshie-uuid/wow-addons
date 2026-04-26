@@ -38,8 +38,6 @@ TrackerEntry.active = active
 -- LOCAL FUNCTIONS
 --------------------------------------------------------------------------------
 
--- WIDGET BUILDERS --------------------------------------------------------------
-
 -- Three full-row textures (super-track tint, completed tint, flash overlay)
 -- plus the flash AnimationGroup and the entry:FlashAttention method.
 local function buildBackgrounds(entry)
