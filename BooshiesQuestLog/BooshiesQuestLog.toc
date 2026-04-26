@@ -9,6 +9,7 @@
 Core.lua
 Util.lua
 BlizzardInterface.lua
+BlizzardTracker.lua
 Debug.lua
 Data\Quests.lua
 Data\Achievements.lua

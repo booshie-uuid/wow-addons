@@ -1465,75 +1465,6 @@ Refresh = function() addon.Util.safeCall("Refresh", RefreshUI) end
 
 
 --------------------------------------------------------------------------------
--- BLIZZARD TRACKER INTEGRATION
---------------------------------------------------------------------------------
-
-local BLIZZARD_QUEST_MODULES = {
-    "QuestObjectiveTracker",
-    "CampaignQuestObjectiveTracker",
-    "AchievementObjectiveTracker",
-    "ProfessionsRecipeTracker",
-    "WorldQuestObjectiveTracker",
-    "BonusObjectiveTracker",
-    "MonthlyActivitiesObjectiveTracker",
-    "InitiativeTasksObjectiveTracker",
-}
-
-local hookedBlizzardModules = {}
-
-local function AttachSquashHooks(m)
-
-    if hookedBlizzardModules[m] then return end
-    hookedBlizzardModules[m] = true
-
-    local function squash(self)
-        if self._bqlForceHidden then
-            self:Hide()
-            pcall(self.SetHeight, self, 0.01)
-        end
-    end
-
-    if m.HookScript then
-        m:HookScript("OnShow", squash)
-        m:HookScript("OnSizeChanged", squash)
-    end
-
-end
-
-local function RelayoutBlizzardTracker()
-
-    if _G.ObjectiveTrackerManager and ObjectiveTrackerManager.UpdateAll then
-        pcall(ObjectiveTrackerManager.UpdateAll, ObjectiveTrackerManager)
-    elseif ObjectiveTrackerFrame and ObjectiveTrackerFrame.Update then
-        pcall(ObjectiveTrackerFrame.Update, ObjectiveTrackerFrame)
-    end
-
-end
-
-local function ApplyBlizzardTrackerState()
-
-    local shouldHide = addon.Core.getDB().hideBlizzardTracker and true or false
-
-    for _, name in ipairs(BLIZZARD_QUEST_MODULES) do
-        local m = _G[name]
-        if m then
-            m._bqlForceHidden = shouldHide
-            AttachSquashHooks(m)
-            if shouldHide then
-                if m.Hide then pcall(m.Hide, m) end
-                if m.SetHeight then pcall(m.SetHeight, m, 0.0) end
-            else
-                if m.Show then pcall(m.Show, m) end
-            end
-        end
-    end
-
-    RelayoutBlizzardTracker()
-
-end
-
-
---------------------------------------------------------------------------------
 -- SETTINGS UI
 --------------------------------------------------------------------------------
 
@@ -1721,7 +1652,7 @@ function ApplySettings()
         frame.filterBtn:SetChecked(addon.Core.getDB().filterByZone)
     end
 
-    ApplyBlizzardTrackerState()
+    addon.BlizzardTracker.applyState()
     addon.UI.Theme.applyAppearance()
     HideSettings()
     Refresh()
@@ -2140,13 +2071,13 @@ ev:SetScript("OnEvent", function(self, event, arg1)
 
         elseif event == "PLAYER_LOGIN" then
             BuildUI()
-            ApplyBlizzardTrackerState()
+            addon.BlizzardTracker.applyState()
             Reschedule()
 
             if not addon.Core.getDB().helpShown then ShowHelp() end
 
         elseif event == "PLAYER_ENTERING_WORLD" then
-            ApplyBlizzardTrackerState()
+            addon.BlizzardTracker.applyState()
             Reschedule()
 
         elseif event == "UNIT_QUEST_LOG_CHANGED" then
