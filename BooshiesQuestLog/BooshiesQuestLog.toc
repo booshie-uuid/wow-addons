@@ -23,4 +23,5 @@ UI\ObjectivePanel.lua
 UI\HelpWindow.lua
 UI\SettingsWindow.lua
 UI\TrackerWindow.lua
+BooshiesTracker.lua
 BooshiesQuestLog.lua
