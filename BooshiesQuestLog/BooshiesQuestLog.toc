@@ -17,5 +17,6 @@ Data\Recipes.lua
 Data\JournalActivities.lua
 Data\NeighbourhoodActivities.lua
 UI\Theme.lua
+UI\TrackerEntry.lua
 UI\TrackerWindow.lua
 BooshiesQuestLog.lua

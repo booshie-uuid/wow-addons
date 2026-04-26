@@ -26,28 +26,21 @@ local CLASSIFICATION_ORDER = { 2, 0, 4, 5, 1, 6, 9, 7, 3, 10, 8 }
 -- UI CONSTANTS & STATE
 --------------------------------------------------------------------------------
 
--- Row Layout
-local ROW_HEIGHT = 26
-local ROW_GAP = 6
-local BAR_HEIGHT = 3
-local BAR_BOTTOM_PAD = 3
-local TOP_CLUSTER_Y = 3   -- vertical offset for arrow + track + completion icon
+-- Row Layout (shared with UI.TrackerEntry which owns the row geometry).
+local ROW_HEIGHT = addon.UI.TrackerEntry.ROW_HEIGHT
+local ROW_GAP    = addon.UI.TrackerEntry.ROW_GAP
 
 -- TrackerWindow instance plus convenience aliases for its child frames.
 -- Assigned in BuildUI; the rest of the file reads them as if they were locals.
 local window
 local frame, titleText, zoneText, content, scrollFrame, settingsFrame
 
--- Forward declarations - earlier-defined functions close over these and
--- resolve them at call time, so the actual values can be assigned later.
-local ToggleSuperTrack
+-- Forward declaration - earlier-defined functions close over Refresh and
+-- resolve it at call time, so the actual value can be assigned later.
 local Refresh
 
--- Row Pool
-local activeRows, rowPool = {}, {}
-
 -- Scroll Pin
--- After a row click, debounced WoW events (QUEST_LOG_UPDATE, BAG_UPDATE_DELAYED,
+-- After an entry click, debounced WoW events (QUEST_LOG_UPDATE, BAG_UPDATE_DELAYED,
 -- etc.) often trigger another Refresh ~50ms later, and the second layout pass
 -- can shift content slightly (lazy text measurement, scrollbar appear/disappear).
 -- We pin the click target by key for a short window and re-apply ScrollIntoView
@@ -58,7 +51,6 @@ local SCROLL_PIN_WINDOW = 0.3
 -- Newly-Tracked Detection
 local previousTrackedKeys
 local pendingFlashKeys = {}
-local FLASH_DURATION = 0.8
 
 
 --------------------------------------------------------------------------------
@@ -423,138 +415,12 @@ end
 
 
 --------------------------------------------------------------------------------
--- UNTRACK
+-- ENTRY CLICK
 --------------------------------------------------------------------------------
 
-local function TryCall(fn, ...)
-    if type(fn) ~= "function" then return false end
-    local ok = pcall(fn, ...)
-    return ok
-end
+local function onEntryClick(entry)
 
-local function UntrackRow(row)
-
-    if not row then return end
-
-    if row.questID then
-        if C_QuestLog then
-            TryCall(C_QuestLog.RemoveQuestWatch, row.questID)
-            TryCall(C_QuestLog.RemoveWorldQuestWatch, row.questID)
-        end
-
-    elseif row.achievementID then
-        local id = row.achievementID
-        local t = Enum and Enum.ContentTrackingType and Enum.ContentTrackingType.Achievement
-        local stopType = (Enum and Enum.ContentTrackingStopType and Enum.ContentTrackingStopType.Player) or 2
-
-        if C_ContentTracking and C_ContentTracking.StopTracking and t then
-            TryCall(C_ContentTracking.StopTracking, t, id, stopType)
-        end
-        TryCall(_G.RemoveTrackedAchievement, id)
-
-    elseif row.recipeID then
-        if C_TradeSkillUI and C_TradeSkillUI.SetRecipeTracked then
-            TryCall(C_TradeSkillUI.SetRecipeTracked, row.recipeID, false, false)
-            TryCall(C_TradeSkillUI.SetRecipeTracked, row.recipeID, false, true)
-        end
-
-    elseif row.activityID then
-        if C_PerksActivities then
-            -- Probe API for an explicit untrack/remove function and stop on first
-            -- success, since the exact name varies across game versions.
-            for fname, fn in pairs(C_PerksActivities) do
-                if type(fn) == "function" then
-                    local lk = fname:lower()
-                    if lk:find("untrack") or (lk:find("remove") and (lk:find("track") or lk:find("activit"))) then
-                        if TryCall(fn, row.activityID) then break end
-                    end
-                end
-            end
-
-            -- Also call any SetXxxTracked-style toggle with false, in case the API
-            -- exposes a setter rather than a remove.
-            for fname, fn in pairs(C_PerksActivities) do
-                if type(fn) == "function" then
-                    local lk = fname:lower()
-                    if lk:find("^set") and lk:find("track") then
-                        TryCall(fn, row.activityID, false)
-                    end
-                end
-            end
-        end
-
-    elseif row.initiativeID then
-        if C_NeighborhoodInitiative then
-            TryCall(C_NeighborhoodInitiative.RemoveTrackedInitiativeTask, row.initiativeID)
-        end
-    end
-
-end
-
-
---------------------------------------------------------------------------------
--- ROW LIFECYCLE
---------------------------------------------------------------------------------
-
--- Prefixes for the strings returned by RowKey, used to identify a row across
--- pool recycles (e.g. for the scroll pin and newly-tracked detection).
-local KEY_PREFIXES = {
-    quest       = "quest:",
-    achievement = "ach:",
-    recipe      = "recipe:",
-    activity    = "activity:",
-    initiative  = "initiative:",
-    section     = "section:",
-}
-
-local function RowKey(row)
-
-    if not row then return nil end
-
-    if row.itemKind == "achievement" and row.achievementID then
-        return KEY_PREFIXES.achievement .. row.achievementID
-    end
-    if row.itemKind == "recipe" and row.recipeID then
-        return KEY_PREFIXES.recipe .. row.recipeID
-    end
-    if row.itemKind == "activity" and row.activityID then
-        return KEY_PREFIXES.activity .. row.activityID
-    end
-    if row.itemKind == "initiative" and row.initiativeID then
-        return KEY_PREFIXES.initiative .. row.initiativeID
-    end
-    if row.questID then
-        return KEY_PREFIXES.quest .. row.questID
-    end
-    if row.itemKind == "section" and row.classification ~= nil then
-        return KEY_PREFIXES.section .. tostring(row.classification)
-    end
-
-    return nil
-
-end
-
-local function SectionForRowKey(key)
-
-    if not key then return nil end
-
-    if key:sub(1, #KEY_PREFIXES.achievement) == KEY_PREFIXES.achievement then return "achievements" end
-    if key:sub(1, #KEY_PREFIXES.recipe)      == KEY_PREFIXES.recipe      then return "recipes"      end
-    if key:sub(1, #KEY_PREFIXES.activity)    == KEY_PREFIXES.activity    then return "activities"   end
-    if key:sub(1, #KEY_PREFIXES.initiative)  == KEY_PREFIXES.initiative  then return "initiatives"  end
-
-    if key:sub(1, #KEY_PREFIXES.quest) == KEY_PREFIXES.quest then
-        local qid = tonumber(key:sub(#KEY_PREFIXES.quest + 1))
-        if qid then return addon.Data.Quests.getClassification(qid) end
-    end
-
-    return nil
-
-end
-
-local function OnRowClick(row)
-
-    local key = RowKey(row)
+    local key = addon.UI.TrackerEntry.keyFor(entry)
     if not key then return end
 
     addon.Core.getDB().expandedKeys = addon.Core.getDB().expandedKeys or {}
@@ -568,335 +434,6 @@ local function OnRowClick(row)
     pendingScrollExpiresAt = GetTime() + SCROLL_PIN_WINDOW
 
     Refresh()
-
-end
-
--- Three full-row textures (super-track tint, completed tint, flash overlay)
--- plus the flash AnimationGroup and the row:FlashAttention method.
-local function BuildRowBackgrounds(row)
-
-    local superBg = row:CreateTexture(nil, "BACKGROUND", nil, -2)
-    superBg:SetAllPoints(row)
-    superBg:SetColorTexture(unpack(addon.UI.Theme.colors.superTrackBg))
-    superBg:Hide()
-    row.superBg = superBg
-
-    local completeBg = row:CreateTexture(nil, "BACKGROUND")
-    completeBg:SetAllPoints(row)
-    completeBg:SetColorTexture(unpack(addon.UI.Theme.colors.completedBg))
-    completeBg:Hide()
-    row.completeBg = completeBg
-
-    local flashBg = row:CreateTexture(nil, "OVERLAY")
-    flashBg:SetAllPoints(row)
-    flashBg:SetColorTexture(unpack(addon.UI.Theme.colors.flashHighlight))
-    flashBg:Hide()
-    row.flashBg = flashBg
-
-    local flashAnim = flashBg:CreateAnimationGroup()
-    local fade = flashAnim:CreateAnimation("Alpha")
-    fade:SetFromAlpha(1)
-    fade:SetToAlpha(0)
-    fade:SetDuration(FLASH_DURATION)
-    fade:SetSmoothing("OUT")
-    flashAnim:SetScript("OnFinished", function() flashBg:Hide() end)
-    row.flashAnim = flashAnim
-
-    function row:FlashAttention()
-        self.flashAnim:Stop()
-        self.flashBg:SetAlpha(1)
-        self.flashBg:Show()
-        self.flashAnim:Play()
-    end
-
-end
-
-local function BuildRowSeparator(row)
-
-    local sep = row:CreateTexture(nil, "ARTWORK")
-    sep:SetColorTexture(unpack(addon.UI.Theme.colors.rowSeparator))
-    sep:SetHeight(1)
-    sep:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, -math.floor(ROW_GAP / 2))
-    sep:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, -math.floor(ROW_GAP / 2))
-    row.separator = sep
-
-end
-
--- Defines `row.btn` (the clickable area covering the title row) and `row.hover`
--- (the highlight texture, shown by WireRowClick on enter/leave).
-local function BuildRowButton(row)
-
-    local btn = CreateFrame("Button", nil, row)
-    btn:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
-    btn:SetPoint("TOPRIGHT", row, "TOPRIGHT", 0, 0)
-    btn:SetHeight(ROW_HEIGHT)
-    btn:RegisterForClicks("LeftButtonUp")
-    row.btn = btn
-
-    local hover = btn:CreateTexture(nil, "BACKGROUND")
-    hover:SetAllPoints(btn)
-    hover:SetColorTexture(unpack(addon.UI.Theme.colors.rowHover))
-    hover:Hide()
-    row.hover = hover
-
-end
-
-local function BuildRowArrow(row)
-
-    local arrow = row.btn:CreateTexture(nil, "OVERLAY")
-    arrow:SetSize(14, 14)
-    arrow:SetPoint("LEFT", row.btn, "LEFT", 3, TOP_CLUSTER_Y)
-    arrow:SetTexture(addon.UI.Theme.textures.plusButton)
-    row.arrow = arrow
-
-end
-
--- Radio-style super-track button on the right edge. The OnClick handler reads
--- row.questID at click time so it stays current as the row gets recycled across
--- different quests by the row pool.
-local function BuildRowSuperTrackBtn(row)
-
-    local track = CreateFrame("Button", nil, row.btn)
-    track:SetSize(18, 18)
-    track:SetPoint("RIGHT", row.btn, "RIGHT", -2, TOP_CLUSTER_Y)
-    track:SetHitRectInsets(-4, -4, -4, -4)
-
-    local ring = track:CreateTexture(nil, "ARTWORK")
-    ring:SetAllPoints(track)
-    ring:SetTexture(addon.UI.Theme.textures.radioButton)
-    ring:SetTexCoord(0, 0.25, 0, 1)
-    ring:SetVertexColor(0.75, 0.75, 0.78)
-
-    local fill = track:CreateTexture(nil, "OVERLAY")
-    fill:SetAllPoints(track)
-    fill:SetTexture(addon.UI.Theme.textures.radioButton)
-    fill:SetTexCoord(0.25, 0.5, 0, 1)
-    fill:SetVertexColor(1.0, 0.82, 0.0)
-    fill:Hide()
-
-    local trackHover = track:CreateTexture(nil, "HIGHLIGHT")
-    trackHover:SetAllPoints(track)
-    trackHover:SetTexture(addon.UI.Theme.textures.radioButton)
-    trackHover:SetTexCoord(0.5, 0.75, 0, 1)
-    trackHover:SetBlendMode("ADD")
-
-    track._checked = false
-    function track:SetChecked(v)
-        self._checked = v and true or false
-        fill:SetShown(self._checked)
-    end
-    function track:GetChecked() return self._checked end
-
-    track:SetScript("OnClick", function(self)
-        local qid = row.questID
-        if not qid or not C_SuperTrack then return end
-        if self:GetChecked() then
-            C_SuperTrack.SetSuperTrackedQuestID(0)
-        else
-            C_SuperTrack.SetSuperTrackedQuestID(qid)
-        end
-    end)
-    track:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:AddLine("Super Track")
-        GameTooltip:AddLine("Place a waypoint arrow on the map for this quest.", 1, 1, 1, true)
-        GameTooltip:Show()
-    end)
-    track:SetScript("OnLeave", GameTooltip_Hide)
-
-    row.trackCheck = track
-
-end
-
-local function BuildRowCompletionIcon(row)
-
-    local completionIcon = row.btn:CreateTexture(nil, "OVERLAY")
-    completionIcon:SetSize(14, 14)
-    completionIcon:SetPoint("RIGHT", row.trackCheck, "LEFT", -4, 0)
-    completionIcon:SetTexture(addon.UI.Theme.textures.checkmark)
-    completionIcon:Hide()
-    row.completionIcon = completionIcon
-
-end
-
--- Background bar + foreground fill, plus row:SetProgress(pct, hasAny, complete)
--- which clamps to [0, 1], picks the appropriate fill colour, and falls back to
--- a sensible width when the bar hasn't been measured yet.
-local function BuildRowProgressBar(row)
-
-    local barBg = row:CreateTexture(nil, "ARTWORK")
-    barBg:SetColorTexture(unpack(addon.UI.Theme.colors.barBg))
-    barBg:SetHeight(BAR_HEIGHT)
-    barBg:SetPoint("BOTTOMLEFT", row.btn, "BOTTOMLEFT", 4, BAR_BOTTOM_PAD)
-    barBg:SetPoint("BOTTOMRIGHT", row.btn, "BOTTOMRIGHT", -4, BAR_BOTTOM_PAD)
-    barBg:Hide()
-    row.barBg = barBg
-
-    local barFill = row:CreateTexture(nil, "OVERLAY")
-    barFill:SetColorTexture(unpack(addon.UI.Theme.colors.barFill))
-    barFill:SetHeight(BAR_HEIGHT)
-    barFill:SetPoint("LEFT", barBg, "LEFT", 0, 0)
-    barFill:SetPoint("TOP", barBg, "TOP", 0, 0)
-    barFill:SetPoint("BOTTOM", barBg, "BOTTOM", 0, 0)
-    barFill:SetWidth(1)
-    barFill:Hide()
-    row.barFill = barFill
-
-    function row:SetProgress(pct, hasAny, complete)
-        if not hasAny then
-            self.barBg:Hide()
-            self.barFill:Hide()
-            return
-        end
-        self.barBg:Show()
-        self.barFill:Show()
-        local w = self.barBg:GetWidth()
-        if not w or w <= 1 then
-            local cw = (content and content:GetWidth()) or ((addon.Core.getDB().width or 280) - 40)
-            w = cw - 8
-        end
-        local clamped = math.min(math.max(pct or 0, 0), 1)
-        self.barFill:SetWidth(math.max(1, w * clamped))
-        if complete or clamped >= 1 then
-            self.barFill:SetColorTexture(unpack(addon.UI.Theme.colors.barFillComplete))
-        else
-            self.barFill:SetColorTexture(unpack(addon.UI.Theme.colors.barFill))
-        end
-    end
-
-end
-
--- Title font string + row:SetComplete(flag), which re-anchors the title's right
--- edge to the completion icon when complete (so the icon is visible to its
--- right) or to the track button when not.
-local function BuildRowTitle(row)
-
-    local title = row.btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    title:SetPoint("LEFT", row.arrow, "RIGHT", 4, 0)
-    title:SetPoint("RIGHT", row.trackCheck, "LEFT", -2, 0)
-    title:SetJustifyH("LEFT")
-    title:SetWordWrap(false)
-    row.title = title
-
-    function row:SetComplete(flag)
-        flag = flag and true or false
-        self.completeBg:SetShown(flag)
-        self.completionIcon:SetShown(flag)
-        self.title:ClearAllPoints()
-        self.title:SetPoint("LEFT", self.arrow, "RIGHT", 4, 0)
-        if flag then
-            self.title:SetPoint("RIGHT", self.completionIcon, "LEFT", -2, 0)
-        else
-            self.title:SetPoint("RIGHT", self.trackCheck, "LEFT", -2, 0)
-        end
-    end
-
-end
-
-local function WireRowClick(row)
-
-    local btn = row.btn
-    local hover = row.hover
-
-    btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-    btn:SetScript("OnEnter", function() hover:Show() end)
-    btn:SetScript("OnLeave", function() hover:Hide() end)
-
-    btn:SetScript("OnClick", function(self, button)
-
-        if not row.questID and not row.achievementID and not row.recipeID and not row.activityID and not row.initiativeID then return end
-
-        -- Ctrl+Left: super-track this quest.
-        if IsControlKeyDown() and button == "LeftButton" then
-            if row.questID then ToggleSuperTrack(row.questID) end
-            return
-        end
-
-        -- Ctrl+Right: dump debug metadata (debug mode only).
-        if IsControlKeyDown() and button == "RightButton" then
-            if addon.Core.getDB().debug then
-                if row.questID then
-                    addon.Debug.dumpQuest(row.questID)
-                elseif row.achievementID then
-                    addon.Debug.dumpAchievement(row.achievementID)
-                elseif row.recipeID then
-                    addon.Debug.dumpRecipe(row.recipeID)
-                end
-            end
-            return
-        end
-
-        -- Shift+Left: untrack.
-        if IsShiftKeyDown() and button == "LeftButton" then
-            UntrackRow(row)
-            return
-        end
-
-        -- Right: open the appropriate details dialog for this row's kind.
-        if button == "RightButton" then
-            if row.questID then
-                addon.BlizzardInterface.openQuest(row.questID)
-            elseif row.achievementID then
-                addon.BlizzardInterface.openAchievement(row.achievementID)
-            elseif row.recipeID then
-                addon.BlizzardInterface.openRecipe(row.recipeID)
-            elseif row.activityID then
-                addon.BlizzardInterface.openJournalActivities()
-            elseif row.initiativeID then
-                addon.BlizzardInterface.openNeighbourhoodActivities(row.initiativeID)
-            end
-            return
-        end
-
-        -- Plain left click: toggle expand/collapse.
-        OnRowClick(row)
-
-    end)
-
-end
-
-local function CreateRow()
-
-    local row = CreateFrame("Frame", nil, content)
-    row:SetHeight(ROW_HEIGHT)
-
-    BuildRowBackgrounds(row)
-    BuildRowSeparator(row)
-    BuildRowButton(row)
-    BuildRowArrow(row)
-    BuildRowSuperTrackBtn(row)
-    BuildRowCompletionIcon(row)
-    BuildRowProgressBar(row)
-    BuildRowTitle(row)
-    WireRowClick(row)
-
-    return row
-
-end
-
-local function AcquireRow()
-    local row = table.remove(rowPool) or CreateRow()
-    row:Show()
-    return row
-end
-
-local function ReleaseRow(row)
-
-    CollapseRow(row)
-    row:Hide()
-
-    if row.superBg then row.superBg:Hide() end
-    if row.flashAnim then row.flashAnim:Stop() end
-    if row.flashBg then row.flashBg:Hide() end
-
-    row.questID = nil
-    row.achievementID = nil
-    row.recipeID = nil
-    row.activityID = nil
-    row.initiativeID = nil
-    row.itemKind = nil
-
-    table.insert(rowPool, row)
 
 end
 
@@ -955,7 +492,7 @@ local function CreateSectionHeader()
         addon.Core.getDB().collapsedSections = addon.Core.getDB().collapsedSections or {}
         addon.Core.getDB().collapsedSections[cls] = not addon.Core.getDB().collapsedSections[cls]
 
-        pendingScrollKey = RowKey(self)
+        pendingScrollKey = addon.UI.TrackerEntry.keyFor(self)
         pendingScrollExpiresAt = GetTime() + SCROLL_PIN_WINDOW
 
         Refresh()
@@ -1002,10 +539,10 @@ local function RenderSection(spec)
     if collapsed then return end
 
     for _, item in ipairs(spec.items) do
-        local row = spec.populateRow(item)
+        local row = spec.populateEntry(item)
         if row then
             row:SetHeight(ROW_HEIGHT)
-            table.insert(activeRows, row)
+            table.insert(addon.UI.TrackerEntry.active, row)
             table.insert(spec.layout, row)
         end
     end
@@ -1082,7 +619,7 @@ local function DetectAndShowNewlyTracked(currentKeys)
             -- item, so it appears expanded next time it becomes visible.
             addon.Core.getDB().expandedKeys[key] = true
 
-            local section = SectionForRowKey(key)
+            local section = addon.UI.TrackerEntry.sectionFor(key)
             if section ~= nil then
                 addon.Core.getDB().collapsedSections[section] = nil
             end
@@ -1092,7 +629,7 @@ local function DetectAndShowNewlyTracked(currentKeys)
         end
     end
 
-    -- Hidden-by-filter items have no matching row in activeRows, so
+    -- Hidden-by-filter items have no matching row in addon.UI.TrackerEntry.active, so
     -- ApplyPendingScroll naturally no-ops for them.
     if lastNewKey then
         pendingScrollKey = lastNewKey
@@ -1113,8 +650,8 @@ end
 
 local function ReleaseAllRowsAndSections()
 
-    for _, row in ipairs(activeRows) do ReleaseRow(row) end
-    wipe(activeRows)
+    for _, row in ipairs(addon.UI.TrackerEntry.active) do addon.UI.TrackerEntry.release(row) end
+    wipe(addon.UI.TrackerEntry.active)
 
     for _, hdr in ipairs(activeSections) do ReleaseSection(hdr) end
     wipe(activeSections)
@@ -1156,9 +693,9 @@ local function RenderQuestSections(layout, groups, superTracked)
             title          = CLASSIFICATION_NAMES[cls] or ("Class " .. cls),
             items          = groups[cls],
             layout         = layout,
-            populateRow    = function(q)
+            populateEntry    = function(q)
 
-                local row = AcquireRow()
+                local row = addon.UI.TrackerEntry.acquire()
                 row.itemKind = "quest"
                 row.questID = q.questID
                 row.title:SetText(q.title)
@@ -1193,7 +730,7 @@ local function RenderAchievementSection(layout)
         title          = "Achievements",
         items          = hideAchievements and {} or addon.Data.Achievements.getTracked(),
         layout         = layout,
-        populateRow    = function(achID)
+        populateEntry    = function(achID)
 
             local id, name, _, completed
             if GetAchievementInfo then
@@ -1201,7 +738,7 @@ local function RenderAchievementSection(layout)
             end
             if not id then return nil end
 
-            local row = AcquireRow()
+            local row = addon.UI.TrackerEntry.acquire()
             row.itemKind = "achievement"
             row.achievementID = achID
             row.title:SetText(name or ("Achievement " .. achID))
@@ -1227,9 +764,9 @@ local function RenderRecipeSection(layout)
         title          = "Crafting",
         items          = addon.Core.getDB().filterByZone and {} or addon.Data.Recipes.getTracked(),
         layout         = layout,
-        populateRow    = function(recipeID)
+        populateEntry    = function(recipeID)
 
-            local row = AcquireRow()
+            local row = addon.UI.TrackerEntry.acquire()
             row.itemKind = "recipe"
             row.recipeID = recipeID
             row.title:SetText(addon.Data.Recipes.getName(recipeID))
@@ -1255,12 +792,12 @@ local function RenderActivitySection(layout)
         title          = "Monthly",
         items          = addon.Core.getDB().filterByZone and {} or addon.Data.JournalActivities.getTracked(),
         layout         = layout,
-        populateRow    = function(actID)
+        populateEntry    = function(actID)
 
             local info = addon.Data.JournalActivities.getInfo(actID)
             if not info then return nil end
 
-            local row = AcquireRow()
+            local row = addon.UI.TrackerEntry.acquire()
             row.itemKind = "activity"
             row.activityID = actID
             row.title:SetText(info.activityName or info.name or ("Activity " .. actID))
@@ -1286,11 +823,11 @@ local function RenderInitiativeSection(layout)
         title          = "Endeavours",
         items          = addon.Core.getDB().filterByZone and {} or addon.Data.NeighbourhoodActivities.getTracked(),
         layout         = layout,
-        populateRow    = function(taskID)
+        populateEntry    = function(taskID)
 
             local info = addon.Data.NeighbourhoodActivities.getInfo(taskID)
 
-            local row = AcquireRow()
+            local row = addon.UI.TrackerEntry.acquire()
             row.itemKind = "initiative"
             row.initiativeID = taskID
             row.title:SetText(addon.Data.NeighbourhoodActivities.getName(taskID))
@@ -1318,8 +855,8 @@ local function ApplyExpansionState(layout)
     -- before it computes objective wraps and final row heights.
     RelayoutLayout(layout)
 
-    for _, row in ipairs(activeRows) do
-        if expandedKeys[RowKey(row)] then
+    for _, row in ipairs(addon.UI.TrackerEntry.active) do
+        if expandedKeys[addon.UI.TrackerEntry.keyFor(row)] then
             ExpandRow(row)
         end
     end
@@ -1336,15 +873,15 @@ local function ApplyPendingScroll()
     end
 
     local target
-    for _, r in ipairs(activeRows) do
-        if RowKey(r) == pendingScrollKey then
+    for _, r in ipairs(addon.UI.TrackerEntry.active) do
+        if addon.UI.TrackerEntry.keyFor(r) == pendingScrollKey then
             target = r
             break
         end
     end
     if not target then
         for _, h in ipairs(activeSections) do
-            if RowKey(h) == pendingScrollKey then
+            if addon.UI.TrackerEntry.keyFor(h) == pendingScrollKey then
                 target = h
                 break
             end
@@ -1359,8 +896,8 @@ local function ApplyPendingFlashes()
 
     if not next(pendingFlashKeys) then return end
 
-    for _, row in ipairs(activeRows) do
-        local key = RowKey(row)
+    for _, row in ipairs(addon.UI.TrackerEntry.active) do
+        local key = addon.UI.TrackerEntry.keyFor(row)
         if key and pendingFlashKeys[key] and row.FlashAttention then
             row:FlashAttention()
         end
@@ -1752,6 +1289,12 @@ local function BuildUI()
     content     = window.content
     scrollFrame = window.scrollFrame
 
+    addon.UI.TrackerEntry.init({
+        content   = content,
+        onClick   = onEntryClick,
+        onRelease = CollapseRow,
+    })
+
 end
 
 
@@ -1763,24 +1306,10 @@ local function UpdateSuperTrackState()
 
     local current = C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID and C_SuperTrack.GetSuperTrackedQuestID() or 0
 
-    for _, row in ipairs(activeRows) do
+    for _, row in ipairs(addon.UI.TrackerEntry.active) do
         local isSuper = row.questID and row.questID == current and current ~= 0
         if row.trackCheck then row.trackCheck:SetChecked(isSuper) end
         if row.superBg then row.superBg:SetShown(isSuper and true or false) end
-    end
-
-end
-
-ToggleSuperTrack = function(questID)
-
-    if not questID or not C_SuperTrack then return end
-
-    local cur = C_SuperTrack.GetSuperTrackedQuestID and C_SuperTrack.GetSuperTrackedQuestID() or 0
-
-    if cur == questID then
-        C_SuperTrack.SetSuperTrackedQuestID(0)
-    else
-        C_SuperTrack.SetSuperTrackedQuestID(questID)
     end
 
 end
