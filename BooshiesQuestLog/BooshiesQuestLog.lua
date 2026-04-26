@@ -23,75 +23,6 @@ local CLASSIFICATION_ORDER = { 2, 0, 4, 5, 1, 6, 9, 7, 3, 10, 8 }
 
 
 --------------------------------------------------------------------------------
--- RECIPE DATA
---------------------------------------------------------------------------------
-
-local function GetTrackedRecipeList()
-
-    local list = {}
-    if not C_TradeSkillUI or not C_TradeSkillUI.GetRecipesTracked then return list end
-
-    local seen = {}
-    addon.Util.tryAppendIDs(list, seen, C_TradeSkillUI.GetRecipesTracked, false)
-    addon.Util.tryAppendIDs(list, seen, C_TradeSkillUI.GetRecipesTracked, true)
-
-    return list
-
-end
-
-local function GetRecipeName(recipeID)
-
-    if C_TradeSkillUI and C_TradeSkillUI.GetRecipeInfo then
-        local ok, info = pcall(C_TradeSkillUI.GetRecipeInfo, recipeID)
-        if ok and info and info.name then return info.name end
-    end
-
-    return "Recipe " .. tostring(recipeID)
-
-end
-
--- Args after itemID: includeBank, includeCharges, includeReagentBank.
-local function GetRecipeReagents(recipeID)
-
-    local reagents = {}
-    if not C_TradeSkillUI or not C_TradeSkillUI.GetRecipeSchematic then return reagents end
-
-    local ok, schematic = pcall(C_TradeSkillUI.GetRecipeSchematic, recipeID, false)
-    if not ok or not schematic or not schematic.reagentSlotSchematics then return reagents end
-
-    for _, slot in ipairs(schematic.reagentSlotSchematics) do
-        local needed = slot.quantityRequired or 0
-
-        if needed > 0 and slot.reagents and slot.reagents[1] and slot.reagents[1].itemID then
-            -- A slot's `reagents` list holds every quality variant that fills it
-            -- (q1/q2/q3 of the same base item). Sum across all variants so a
-            -- player holding only q3 still sees their stockpile count.
-            local have = 0
-            for _, reagent in ipairs(slot.reagents) do
-                if reagent.itemID then
-                    have = have + addon.Util.itemCount(reagent.itemID)
-                end
-            end
-
-            reagents[#reagents + 1] = {
-                text = addon.Util.itemName(slot.reagents[1].itemID),
-                numFulfilled = have,
-                numRequired = needed,
-                finished = have >= needed,
-            }
-        end
-    end
-
-    return reagents
-
-end
-
-local function GetRecipeProgress(recipeID)
-    return addon.Util.computeProgress(GetRecipeReagents(recipeID))
-end
-
-
---------------------------------------------------------------------------------
 -- ACTIVITY & INITIATIVE DATA
 --------------------------------------------------------------------------------
 
@@ -617,7 +548,7 @@ local function FetchObjectivesFor(row)
     if row.itemKind == "achievement" then
         return addon.Data.Achievements.getCriteria(row.achievementID)
     elseif row.itemKind == "recipe" then
-        return GetRecipeReagents(row.recipeID)
+        return addon.Data.Recipes.getReagents(row.recipeID)
     elseif row.itemKind == "activity" then
         return GetActivityObjectives(row.activityID)
     elseif row.itemKind == "initiative" then
@@ -1439,7 +1370,7 @@ local function CollectTrackedKeys(snapshot)
     end
 
     for _, id in ipairs(addon.Data.Achievements.getTracked())   do set["ach:"        .. id] = true end
-    for _, id in ipairs(GetTrackedRecipeList())        do set["recipe:"     .. id] = true end
+    for _, id in ipairs(addon.Data.Recipes.getTracked())        do set["recipe:"     .. id] = true end
     for _, id in ipairs(GetTrackedMonthlyActivities()) do set["activity:"   .. id] = true end
     for _, id in ipairs(GetTrackedInitiativeTasks())   do set["initiative:" .. id] = true end
 
@@ -1609,20 +1540,20 @@ local function RenderRecipeSection(layout)
     RenderSection({
         classification = "recipes",
         title          = "Crafting",
-        items          = addon.Core.getDB().filterByZone and {} or GetTrackedRecipeList(),
+        items          = addon.Core.getDB().filterByZone and {} or addon.Data.Recipes.getTracked(),
         layout         = layout,
         populateRow    = function(recipeID)
 
             local row = AcquireRow()
             row.itemKind = "recipe"
             row.recipeID = recipeID
-            row.title:SetText(GetRecipeName(recipeID))
+            row.title:SetText(addon.Data.Recipes.getName(recipeID))
             row.title:SetTextColor(unpack(addon.UI.Theme.colors.itemTitle))
 
             if row.SetComplete then row:SetComplete(false) end
             if row.trackCheck then row.trackCheck:Hide() end
 
-            local pct, hasAny = GetRecipeProgress(recipeID)
+            local pct, hasAny = addon.Data.Recipes.getProgress(recipeID)
             if row.SetProgress then row:SetProgress(pct, hasAny, false) end
 
             return row
