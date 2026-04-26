@@ -105,63 +105,6 @@ local CLASSIFICATION_NAMES = {
 
 local CLASSIFICATION_ORDER = { 2, 0, 4, 5, 1, 6, 9, 7, 3, 10, 8 }
 
-local UI_TEXTURES = {
-    plusButton  = "Interface\\Buttons\\UI-PlusButton-Up",
-    minusButton = "Interface\\Buttons\\UI-MinusButton-Up",
-    checkmark   = "Interface\\RAIDFRAME\\ReadyCheck-Ready",
-    radioButton = "Interface\\Buttons\\UI-RadioButton",
-    cog         = "Interface\\Buttons\\UI-OptionsButton",
-}
-
--- RGBA for fills, RGB for text. Use unpack at call sites.
-local UI_COLORS = {
-    -- Row Backgrounds
-    superTrackBg     = { 1.0,  0.82, 0.0,  0.12 },
-    completedBg      = { 0.12, 0.35, 0.15, 0.45 },
-    flashHighlight   = { 1.0,  0.85, 0.3,  0.6  },
-
-    -- Progress Bar
-    barBg            = { 0.22, 0.22, 0.24, 0.95 },
-    barFill          = { 0.95, 0.82, 0.36, 0.9  },
-    barFillComplete  = { 0.35, 0.9,  0.35, 0.9  },
-
-    -- Separators / Overlays
-    rowSeparator     = { 1, 1, 1, 0.07 },
-    rowHover         = { 1, 1, 1, 0.06 },
-    sectionStripe    = { 1, 1, 1, 0.14 },
-    sectionSeparator = { 1, 1, 1, 0.07 },
-    sectionHover     = { 1, 1, 1, 0.07 },
-    cogHover         = { 1, 1, 1, 0.2  },
-
-    -- Settings Dialog
-    dialogBackdrop   = { 0,    0,    0,    0.78 },
-    dialogBorder     = { 0.25, 0.25, 0.27, 1    },
-
-    -- Resize Grip
-    resizeGrip       = { 0.45, 0.45, 0.48, 0.55 },
-    resizeGripHover  = { 1,    1,    1,    0.25 },
-
-    -- Text
-    sectionTitle        = { 1.0,  0.82, 0.0  },
-    itemTitle           = { 1,    1,    1    },
-    sectionCount        = { 0.85, 0.85, 0.85 },
-    zoneText            = { 0.7,  0.7,  0.7  },
-    collapseAllText     = { 0.55, 0.55, 0.6  },
-    collapseAllHover    = { 1,    1,    1    },
-    objectiveDot        = { 0.75, 0.75, 0.75 },
-    objectiveFinished   = { 0.55, 0.9,  0.55 },
-    objectiveUnfinished = { 0.95, 0.82, 0.36 },
-}
-
--- Converts a UI_COLORS entry (RGB 0-1 floats) into a WoW chat colour escape
--- like "|cffRRGGBB". Use with `|r` to reset back to the FontString's default.
-local function ColorToEscape(rgb)
-    return string.format("|cff%02x%02x%02x",
-        math.floor(rgb[1] * 255 + 0.5),
-        math.floor(rgb[2] * 255 + 0.5),
-        math.floor(rgb[3] * 255 + 0.5))
-end
-
 
 --------------------------------------------------------------------------------
 -- MAP & ZONE HELPERS
@@ -1001,7 +944,7 @@ end
 local function CollapseRow(row)
 
     row.expanded = false
-    row.arrow:SetTexture(UI_TEXTURES.plusButton)
+    row.arrow:SetTexture(addon.UI.Theme.textures.plusButton)
     if row.objFrame then row.objFrame:Hide() end
     row:SetHeight(ROW_HEIGHT)
 
@@ -1111,21 +1054,21 @@ local READY_TO_TURN_IN_PART = { desc = "Ready to turn in", count = nil, finished
 local function LayoutObjectiveRow(row, e, y, part, cols)
 
     local isFinished = part.finished
-    local color = isFinished and UI_COLORS.objectiveFinished or UI_COLORS.objectiveUnfinished
+    local color = isFinished and addon.UI.Theme.colors.objectiveFinished or addon.UI.Theme.colors.objectiveUnfinished
 
     e.tex:ClearAllPoints()
     e.dot:ClearAllPoints()
 
     if isFinished then
         e.tex:SetPoint("CENTER", row.objFrame, "TOPLEFT", COL_MARKER_W / 2, -y - LINE_VCENTER)
-        e.tex:SetTexture(UI_TEXTURES.checkmark)
+        e.tex:SetTexture(addon.UI.Theme.textures.checkmark)
         e.tex:Show()
         e.dot:Hide()
     else
         e.dot:SetPoint("CENTER", row.objFrame, "TOPLEFT", COL_MARKER_W / 2, -y - LINE_VCENTER)
         e.dot:SetJustifyH("CENTER")
         e.dot:SetText("•")
-        e.dot:SetTextColor(unpack(UI_COLORS.objectiveDot))
+        e.dot:SetTextColor(unpack(addon.UI.Theme.colors.objectiveDot))
         e.dot:Show()
         e.tex:Hide()
     end
@@ -1212,7 +1155,7 @@ end
 local function ExpandRow(row)
 
     row.expanded = true
-    row.arrow:SetTexture(UI_TEXTURES.minusButton)
+    row.arrow:SetTexture(addon.UI.Theme.textures.minusButton)
 
     local contentW = (content and content:GetWidth()) or ((addon.Core.getDB().width or 280) - 40)
     local objW = math.max(contentW - OBJ_LEFT_INDENT - OBJ_RIGHT_MARGIN, 60)
@@ -1691,19 +1634,19 @@ local function BuildRowBackgrounds(row)
 
     local superBg = row:CreateTexture(nil, "BACKGROUND", nil, -2)
     superBg:SetAllPoints(row)
-    superBg:SetColorTexture(unpack(UI_COLORS.superTrackBg))
+    superBg:SetColorTexture(unpack(addon.UI.Theme.colors.superTrackBg))
     superBg:Hide()
     row.superBg = superBg
 
     local completeBg = row:CreateTexture(nil, "BACKGROUND")
     completeBg:SetAllPoints(row)
-    completeBg:SetColorTexture(unpack(UI_COLORS.completedBg))
+    completeBg:SetColorTexture(unpack(addon.UI.Theme.colors.completedBg))
     completeBg:Hide()
     row.completeBg = completeBg
 
     local flashBg = row:CreateTexture(nil, "OVERLAY")
     flashBg:SetAllPoints(row)
-    flashBg:SetColorTexture(unpack(UI_COLORS.flashHighlight))
+    flashBg:SetColorTexture(unpack(addon.UI.Theme.colors.flashHighlight))
     flashBg:Hide()
     row.flashBg = flashBg
 
@@ -1728,7 +1671,7 @@ end
 local function BuildRowSeparator(row)
 
     local sep = row:CreateTexture(nil, "ARTWORK")
-    sep:SetColorTexture(unpack(UI_COLORS.rowSeparator))
+    sep:SetColorTexture(unpack(addon.UI.Theme.colors.rowSeparator))
     sep:SetHeight(1)
     sep:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, -math.floor(ROW_GAP / 2))
     sep:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, -math.floor(ROW_GAP / 2))
@@ -1749,7 +1692,7 @@ local function BuildRowButton(row)
 
     local hover = btn:CreateTexture(nil, "BACKGROUND")
     hover:SetAllPoints(btn)
-    hover:SetColorTexture(unpack(UI_COLORS.rowHover))
+    hover:SetColorTexture(unpack(addon.UI.Theme.colors.rowHover))
     hover:Hide()
     row.hover = hover
 
@@ -1760,7 +1703,7 @@ local function BuildRowArrow(row)
     local arrow = row.btn:CreateTexture(nil, "OVERLAY")
     arrow:SetSize(14, 14)
     arrow:SetPoint("LEFT", row.btn, "LEFT", 3, TOP_CLUSTER_Y)
-    arrow:SetTexture(UI_TEXTURES.plusButton)
+    arrow:SetTexture(addon.UI.Theme.textures.plusButton)
     row.arrow = arrow
 
 end
@@ -1777,20 +1720,20 @@ local function BuildRowSuperTrackBtn(row)
 
     local ring = track:CreateTexture(nil, "ARTWORK")
     ring:SetAllPoints(track)
-    ring:SetTexture(UI_TEXTURES.radioButton)
+    ring:SetTexture(addon.UI.Theme.textures.radioButton)
     ring:SetTexCoord(0, 0.25, 0, 1)
     ring:SetVertexColor(0.75, 0.75, 0.78)
 
     local fill = track:CreateTexture(nil, "OVERLAY")
     fill:SetAllPoints(track)
-    fill:SetTexture(UI_TEXTURES.radioButton)
+    fill:SetTexture(addon.UI.Theme.textures.radioButton)
     fill:SetTexCoord(0.25, 0.5, 0, 1)
     fill:SetVertexColor(1.0, 0.82, 0.0)
     fill:Hide()
 
     local trackHover = track:CreateTexture(nil, "HIGHLIGHT")
     trackHover:SetAllPoints(track)
-    trackHover:SetTexture(UI_TEXTURES.radioButton)
+    trackHover:SetTexture(addon.UI.Theme.textures.radioButton)
     trackHover:SetTexCoord(0.5, 0.75, 0, 1)
     trackHover:SetBlendMode("ADD")
 
@@ -1827,7 +1770,7 @@ local function BuildRowCompletionIcon(row)
     local completionIcon = row.btn:CreateTexture(nil, "OVERLAY")
     completionIcon:SetSize(14, 14)
     completionIcon:SetPoint("RIGHT", row.trackCheck, "LEFT", -4, 0)
-    completionIcon:SetTexture(UI_TEXTURES.checkmark)
+    completionIcon:SetTexture(addon.UI.Theme.textures.checkmark)
     completionIcon:Hide()
     row.completionIcon = completionIcon
 
@@ -1839,7 +1782,7 @@ end
 local function BuildRowProgressBar(row)
 
     local barBg = row:CreateTexture(nil, "ARTWORK")
-    barBg:SetColorTexture(unpack(UI_COLORS.barBg))
+    barBg:SetColorTexture(unpack(addon.UI.Theme.colors.barBg))
     barBg:SetHeight(BAR_HEIGHT)
     barBg:SetPoint("BOTTOMLEFT", row.btn, "BOTTOMLEFT", 4, BAR_BOTTOM_PAD)
     barBg:SetPoint("BOTTOMRIGHT", row.btn, "BOTTOMRIGHT", -4, BAR_BOTTOM_PAD)
@@ -1847,7 +1790,7 @@ local function BuildRowProgressBar(row)
     row.barBg = barBg
 
     local barFill = row:CreateTexture(nil, "OVERLAY")
-    barFill:SetColorTexture(unpack(UI_COLORS.barFill))
+    barFill:SetColorTexture(unpack(addon.UI.Theme.colors.barFill))
     barFill:SetHeight(BAR_HEIGHT)
     barFill:SetPoint("LEFT", barBg, "LEFT", 0, 0)
     barFill:SetPoint("TOP", barBg, "TOP", 0, 0)
@@ -1872,9 +1815,9 @@ local function BuildRowProgressBar(row)
         local clamped = math.min(math.max(pct or 0, 0), 1)
         self.barFill:SetWidth(math.max(1, w * clamped))
         if complete or clamped >= 1 then
-            self.barFill:SetColorTexture(unpack(UI_COLORS.barFillComplete))
+            self.barFill:SetColorTexture(unpack(addon.UI.Theme.colors.barFillComplete))
         else
-            self.barFill:SetColorTexture(unpack(UI_COLORS.barFill))
+            self.barFill:SetColorTexture(unpack(addon.UI.Theme.colors.barFill))
         end
     end
 
@@ -2031,10 +1974,10 @@ local function CreateSectionHeader()
 
     local stripe = hdr:CreateTexture(nil, "BACKGROUND")
     stripe:SetAllPoints(hdr)
-    stripe:SetColorTexture(unpack(UI_COLORS.sectionStripe))
+    stripe:SetColorTexture(unpack(addon.UI.Theme.colors.sectionStripe))
 
     local hdrSep = hdr:CreateTexture(nil, "ARTWORK")
-    hdrSep:SetColorTexture(unpack(UI_COLORS.sectionSeparator))
+    hdrSep:SetColorTexture(unpack(addon.UI.Theme.colors.sectionSeparator))
     hdrSep:SetHeight(1)
     hdrSep:SetPoint("BOTTOMLEFT", hdr, "BOTTOMLEFT", 0, -math.floor(ROW_GAP / 2))
     hdrSep:SetPoint("BOTTOMRIGHT", hdr, "BOTTOMRIGHT", 0, -math.floor(ROW_GAP / 2))
@@ -2042,12 +1985,12 @@ local function CreateSectionHeader()
 
     local hover = hdr:CreateTexture(nil, "HIGHLIGHT")
     hover:SetAllPoints(hdr)
-    hover:SetColorTexture(unpack(UI_COLORS.sectionHover))
+    hover:SetColorTexture(unpack(addon.UI.Theme.colors.sectionHover))
 
     local arrow = hdr:CreateTexture(nil, "OVERLAY")
     arrow:SetSize(12, 12)
     arrow:SetPoint("LEFT", hdr, "LEFT", 4, 0)
-    arrow:SetTexture(UI_TEXTURES.minusButton)
+    arrow:SetTexture(addon.UI.Theme.textures.minusButton)
     hdr.arrow = arrow
 
     local title = hdr:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -2058,7 +2001,7 @@ local function CreateSectionHeader()
     local count = hdr:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     count:SetPoint("RIGHT", hdr, "RIGHT", -6, 0)
     count:SetJustifyH("RIGHT")
-    count:SetTextColor(unpack(UI_COLORS.sectionCount))
+    count:SetTextColor(unpack(addon.UI.Theme.colors.sectionCount))
     hdr.count = count
 
     hdr:SetScript("OnClick", function(self)
@@ -2102,12 +2045,12 @@ local function RenderSection(spec)
     local hdr = AcquireSection()
     hdr.classification = spec.classification
     hdr.title:SetText(spec.title)
-    hdr.title:SetTextColor(unpack(UI_COLORS.sectionTitle))
+    hdr.title:SetTextColor(unpack(addon.UI.Theme.colors.sectionTitle))
 
     local collapsed = (addon.Core.getDB().collapsedSections or {})[spec.classification] and true or false
 
     hdr.count:SetText(#spec.items)
-    hdr.arrow:SetTexture(collapsed and UI_TEXTURES.plusButton or UI_TEXTURES.minusButton)
+    hdr.arrow:SetTexture(collapsed and addon.UI.Theme.textures.plusButton or addon.UI.Theme.textures.minusButton)
     hdr:SetHeight(SECTION_HEIGHT)
 
     table.insert(activeSections, hdr)
@@ -2276,7 +2219,7 @@ local function RenderQuestSections(layout, groups, superTracked)
                 row.itemKind = "quest"
                 row.questID = q.questID
                 row.title:SetText(q.title)
-                row.title:SetTextColor(unpack(UI_COLORS.itemTitle))
+                row.title:SetTextColor(unpack(addon.UI.Theme.colors.itemTitle))
 
                 if row.SetComplete then row:SetComplete(q.isComplete) end
 
@@ -2319,7 +2262,7 @@ local function RenderAchievementSection(layout)
             row.itemKind = "achievement"
             row.achievementID = achID
             row.title:SetText(name or ("Achievement " .. achID))
-            row.title:SetTextColor(unpack(UI_COLORS.itemTitle))
+            row.title:SetTextColor(unpack(addon.UI.Theme.colors.itemTitle))
 
             if row.SetComplete then row:SetComplete(completed) end
             if row.trackCheck then row.trackCheck:Hide() end
@@ -2347,7 +2290,7 @@ local function RenderRecipeSection(layout)
             row.itemKind = "recipe"
             row.recipeID = recipeID
             row.title:SetText(GetRecipeName(recipeID))
-            row.title:SetTextColor(unpack(UI_COLORS.itemTitle))
+            row.title:SetTextColor(unpack(addon.UI.Theme.colors.itemTitle))
 
             if row.SetComplete then row:SetComplete(false) end
             if row.trackCheck then row.trackCheck:Hide() end
@@ -2378,7 +2321,7 @@ local function RenderActivitySection(layout)
             row.itemKind = "activity"
             row.activityID = actID
             row.title:SetText(info.activityName or info.name or ("Activity " .. actID))
-            row.title:SetTextColor(unpack(UI_COLORS.itemTitle))
+            row.title:SetTextColor(unpack(addon.UI.Theme.colors.itemTitle))
 
             if row.SetComplete then row:SetComplete(info.completed) end
             if row.trackCheck then row.trackCheck:Hide() end
@@ -2408,7 +2351,7 @@ local function RenderInitiativeSection(layout)
             row.itemKind = "initiative"
             row.initiativeID = taskID
             row.title:SetText(GetInitiativeTaskName(taskID))
-            row.title:SetTextColor(unpack(UI_COLORS.itemTitle))
+            row.title:SetTextColor(unpack(addon.UI.Theme.colors.itemTitle))
 
             if row.SetComplete then row:SetComplete(info and info.completed) end
             if row.trackCheck then row.trackCheck:Hide() end
@@ -2601,79 +2544,6 @@ local function ApplyBlizzardTrackerState()
 
 end
 
--- Frames that have been skinned. Tracked so user-tweakable appearance settings
--- (background opacity, outer border visibility) can be re-applied on the fly.
-local skinnedFrames = {}
-
-local function ApplyFlatSkin(f)
-
-    local bg = f:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints(f)
-    bg:SetColorTexture(unpack(UI_COLORS.dialogBackdrop))
-    f.backdrop = bg
-
-    local edges = {}
-    local function edge(side)
-        local t = f:CreateTexture(nil, "BORDER")
-        t:SetColorTexture(unpack(UI_COLORS.dialogBorder))
-        if side == "top" then
-            t:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
-            t:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
-            t:SetHeight(1)
-        elseif side == "bottom" then
-            t:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 0, 0)
-            t:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 0)
-            t:SetHeight(1)
-        elseif side == "left" then
-            t:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
-            t:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 0, 0)
-            t:SetWidth(1)
-        elseif side == "right" then
-            t:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
-            t:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 0)
-            t:SetWidth(1)
-        end
-        edges[side] = t
-    end
-
-    edge("top")
-    edge("bottom")
-    edge("left")
-    edge("right")
-
-    f.edges = edges
-
-    table.insert(skinnedFrames, f)
-
-    -- Apply current user-tweakable settings now so the frame matches the
-    -- saved appearance immediately, not only after the next ApplySettings.
-    local r, g, b = unpack(UI_COLORS.dialogBackdrop)
-    bg:SetColorTexture(r, g, b, addon.Core.getDB().backdropAlpha or UI_COLORS.dialogBackdrop[4])
-    for _, t in pairs(edges) do
-        t:SetShown(not addon.Core.getDB().hideBorder)
-    end
-
-end
-
-local function ApplyAppearance()
-
-    local r, g, b = unpack(UI_COLORS.dialogBackdrop)
-    local alpha = addon.Core.getDB().backdropAlpha or UI_COLORS.dialogBackdrop[4]
-    local showBorder = not addon.Core.getDB().hideBorder
-
-    for _, f in ipairs(skinnedFrames) do
-        if f.backdrop then
-            f.backdrop:SetColorTexture(r, g, b, alpha)
-        end
-        if f.edges then
-            for _, t in pairs(f.edges) do
-                t:SetShown(showBorder)
-            end
-        end
-    end
-
-end
-
 
 --------------------------------------------------------------------------------
 -- SETTINGS UI
@@ -2701,7 +2571,7 @@ local function BuildSettingsUI()
     settingsFrame:EnableMouse(true)
     settingsFrame:SetClampedToScreen(true)
     settingsFrame:Hide()
-    ApplyFlatSkin(settingsFrame)
+    addon.UI.Theme.applyFlatSkin(settingsFrame)
 
     local title = settingsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalMed1")
     title:SetPoint("LEFT", settingsFrame, "TOPLEFT", 8, -19)
@@ -2864,7 +2734,7 @@ function ApplySettings()
     end
 
     ApplyBlizzardTrackerState()
-    ApplyAppearance()
+    addon.UI.Theme.applyAppearance()
     HideSettings()
     Refresh()
 
@@ -2879,7 +2749,7 @@ local helpFrame
 
 -- Gold highlight derived from our central palette so the help cheatsheet
 -- matches the section-title colour by reference, not coincidence.
-local GOLD = ColorToEscape(UI_COLORS.sectionTitle)
+local GOLD = addon.UI.Theme.colorEscape(addon.UI.Theme.colors.sectionTitle)
 local RESET = "|r"
 
 local HELP_BODY_TEXT =
@@ -2901,7 +2771,7 @@ local function BuildHelpUI()
     helpFrame:EnableMouse(true)
     helpFrame:SetClampedToScreen(true)
     helpFrame:Hide()
-    ApplyFlatSkin(helpFrame)
+    addon.UI.Theme.applyFlatSkin(helpFrame)
 
     -- Closes on Escape.
     tinsert(UISpecialFrames, "BooshiesQuestLogHelpFrame")
@@ -2914,7 +2784,7 @@ local function BuildHelpUI()
     -- |r resets in HELP_BODY_TEXT return to our white instead of GameFontNormal's
     -- default gold.
     local body = helpFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    body:SetTextColor(unpack(UI_COLORS.itemTitle))
+    body:SetTextColor(unpack(addon.UI.Theme.colors.itemTitle))
     body:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -10)
     body:SetPoint("RIGHT", helpFrame, "RIGHT", -12, 0)
     body:SetJustifyH("LEFT")
@@ -2966,7 +2836,7 @@ local function BuildMainFrame()
     frame:EnableMouse(true)
     frame:SetClampedToScreen(true)
 
-    ApplyFlatSkin(frame)
+    addon.UI.Theme.applyFlatSkin(frame)
 
 end
 
@@ -3013,7 +2883,7 @@ local function BuildHeader()
     zoneText = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     zoneText:SetPoint("TOPLEFT", titleText, "BOTTOMLEFT", 0, -2)
     zoneText:SetJustifyH("LEFT")
-    zoneText:SetTextColor(unpack(UI_COLORS.zoneText))
+    zoneText:SetTextColor(unpack(addon.UI.Theme.colors.zoneText))
 
 end
 
@@ -3024,11 +2894,11 @@ local function BuildHeaderButtons()
     local cogBtn = CreateFrame("Button", nil, header)
     cogBtn:SetSize(16, 16)
     cogBtn:SetPoint("RIGHT", header, "TOPRIGHT", 0, -11)
-    cogBtn:SetNormalTexture(UI_TEXTURES.cog)
+    cogBtn:SetNormalTexture(addon.UI.Theme.textures.cog)
 
     local cogHover = cogBtn:CreateTexture(nil, "HIGHLIGHT")
     cogHover:SetAllPoints(cogBtn)
-    cogHover:SetColorTexture(unpack(UI_COLORS.cogHover))
+    cogHover:SetColorTexture(unpack(addon.UI.Theme.colors.cogHover))
 
     cogBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
@@ -3068,15 +2938,15 @@ local function BuildHeaderButtons()
     local collapseAllText = collapseAllBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     collapseAllText:SetPoint("RIGHT", collapseAllBtn, "RIGHT", 0, 0)
     collapseAllText:SetText("collapse all")
-    collapseAllText:SetTextColor(unpack(UI_COLORS.collapseAllText))
+    collapseAllText:SetTextColor(unpack(addon.UI.Theme.colors.collapseAllText))
 
     collapseAllBtn:SetSize((collapseAllText:GetStringWidth() or 60) + 4, 14)
     collapseAllBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -8, -22)
     collapseAllBtn:SetFrameLevel((header:GetFrameLevel() or frame:GetFrameLevel()) + 5)
     collapseAllBtn:SetHitRectInsets(-3, -3, -3, -3)
 
-    collapseAllBtn:SetScript("OnEnter", function() collapseAllText:SetTextColor(unpack(UI_COLORS.collapseAllHover)) end)
-    collapseAllBtn:SetScript("OnLeave", function() collapseAllText:SetTextColor(unpack(UI_COLORS.collapseAllText)) end)
+    collapseAllBtn:SetScript("OnEnter", function() collapseAllText:SetTextColor(unpack(addon.UI.Theme.colors.collapseAllHover)) end)
+    collapseAllBtn:SetScript("OnLeave", function() collapseAllText:SetTextColor(unpack(addon.UI.Theme.colors.collapseAllText)) end)
     collapseAllBtn:SetScript("OnClick", function()
         addon.Core.getDB().expandedKeys = {}
         addon.Core.getDB().collapsedSections = addon.Core.getDB().collapsedSections or {}
@@ -3133,11 +3003,11 @@ local function BuildResizer()
 
     local grip = resizer:CreateTexture(nil, "OVERLAY")
     grip:SetAllPoints(resizer)
-    grip:SetColorTexture(unpack(UI_COLORS.resizeGrip))
+    grip:SetColorTexture(unpack(addon.UI.Theme.colors.resizeGrip))
 
     local gripHover = resizer:CreateTexture(nil, "HIGHLIGHT")
     gripHover:SetAllPoints(resizer)
-    gripHover:SetColorTexture(unpack(UI_COLORS.resizeGripHover))
+    gripHover:SetColorTexture(unpack(addon.UI.Theme.colors.resizeGripHover))
 
     local function dragUpdate(self)
         local cur = select(2, GetCursorPosition()) / UIParent:GetEffectiveScale()
