@@ -1,10 +1,9 @@
--- =============================================================================
+local addonName, addon = ...
+
+
+--------------------------------------------------------------------------------
 -- BOOTSTRAP & CORE UTILITIES
--- =============================================================================
-
-local ADDON_NAME = ...
-
-BooshiesQuestLogDB = BooshiesQuestLogDB or {}
+--------------------------------------------------------------------------------
 
 local observedErrors = {}
 local function SafeCall(label, fn, ...)
@@ -86,29 +85,9 @@ local function TryAppendIDs(list, seen, fn, ...)
 end
 
 
--- =============================================================================
--- DEFAULTS & LOOKUPS
--- =============================================================================
-
-local DEFAULTS = {
-    enabled = true,
-    filterByZone = false,
-    alwaysShowCampaign = true,
-    alwaysShowAchievements = true,
-    debug = false,
-    includeWorldQuests = false,
-    hideBlizzardTracker = true,
-    point = { "TOPRIGHT", "UIParent", "TOPRIGHT", -20, -200 },
-    width = 280,
-    maxHeight = 300,
-    expandedKeys = {},
-    collapsedSections = {},
-    collapsed = false,
-    helpShown = false,
-    lockPosition = false,
-    hideBorder = false,
-    backdropAlpha = 0.78,
-}
+--------------------------------------------------------------------------------
+-- LOOKUPS
+--------------------------------------------------------------------------------
 
 local CLASSIFICATION_NAMES = {
     [0]  = "Important",
@@ -184,35 +163,9 @@ local function ColorToEscape(rgb)
 end
 
 
--- =============================================================================
--- INIT
--- =============================================================================
-
-local function InitDB()
-
-    for k, v in pairs(DEFAULTS) do
-        if BooshiesQuestLogDB[k] == nil then BooshiesQuestLogDB[k] = v end
-    end
-
-    -- Migration from earlier single-key form to the expandedKeys set.
-    if type(BooshiesQuestLogDB.expandedKey) == "string" then
-        BooshiesQuestLogDB.expandedKeys = BooshiesQuestLogDB.expandedKeys or {}
-        BooshiesQuestLogDB.expandedKeys[BooshiesQuestLogDB.expandedKey] = true
-        BooshiesQuestLogDB.expandedKey = nil
-    end
-
-    -- Clamp maxHeight if the screen is now smaller than a previously saved value.
-    local screenH = UIParent and UIParent:GetHeight() or 768
-    if BooshiesQuestLogDB.maxHeight and BooshiesQuestLogDB.maxHeight > screenH - 60 then
-        BooshiesQuestLogDB.maxHeight = math.max(DEFAULTS.maxHeight, math.floor(screenH * 0.5))
-    end
-
-end
-
-
--- =============================================================================
+--------------------------------------------------------------------------------
 -- MAP & ZONE HELPERS
--- =============================================================================
+--------------------------------------------------------------------------------
 
 local function GetPlayerZoneMapID()
     return C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
@@ -228,9 +181,9 @@ local function GetMapName(mapID)
 end
 
 
--- =============================================================================
+--------------------------------------------------------------------------------
 -- QUEST DATA
--- =============================================================================
+--------------------------------------------------------------------------------
 
 local function SnapshotQuestLog()
 
@@ -344,9 +297,9 @@ local function GetClassification(questID)
 end
 
 
--- =============================================================================
+--------------------------------------------------------------------------------
 -- QUEST VISIBILITY & PROGRESS
--- =============================================================================
+--------------------------------------------------------------------------------
 
 local function GetQuestProgress(questID)
     return ComputeProgress(C_QuestLog.GetQuestObjectives(questID))
@@ -369,18 +322,18 @@ local function ShouldShow(questID, snapshot, poiSet, currentMapID, currentMapNam
     if not info then return false end
     if not IsQuestWatched(questID) then return false end
 
-    if not BooshiesQuestLogDB.filterByZone then return true end
+    if not addon.Core.getDB().filterByZone then return true end
     if poiSet[questID] then return true end
-    if BooshiesQuestLogDB.alwaysShowCampaign and IsCampaign(info) then return true end
+    if addon.Core.getDB().alwaysShowCampaign and IsCampaign(info) then return true end
 
     return false
 
 end
 
 
--- =============================================================================
+--------------------------------------------------------------------------------
 -- ACHIEVEMENT DATA
--- =============================================================================
+--------------------------------------------------------------------------------
 
 local function GetTrackedAchievementList()
 
@@ -469,9 +422,9 @@ local function GetAchievementProgress(achID)
 end
 
 
--- =============================================================================
+--------------------------------------------------------------------------------
 -- RECIPE DATA
--- =============================================================================
+--------------------------------------------------------------------------------
 
 local function GetTrackedRecipeList()
 
@@ -576,9 +529,9 @@ local function GetRecipeProgress(recipeID)
 end
 
 
--- =============================================================================
+--------------------------------------------------------------------------------
 -- ACTIVITY & INITIATIVE DATA
--- =============================================================================
+--------------------------------------------------------------------------------
 
 local function IterateActivities(callback)
 
@@ -846,9 +799,9 @@ local function GetActivityProgress(id)
 end
 
 
--- =============================================================================
+--------------------------------------------------------------------------------
 -- UI CONSTANTS & STATE
--- =============================================================================
+--------------------------------------------------------------------------------
 
 -- Row Layout
 local ROW_HEIGHT = 26
@@ -892,9 +845,9 @@ local pendingFlashKeys = {}
 local FLASH_DURATION = 0.8
 
 
--- =============================================================================
+--------------------------------------------------------------------------------
 -- FRAME POSITION
--- =============================================================================
+--------------------------------------------------------------------------------
 
 local function SavePosition()
 
@@ -911,7 +864,7 @@ local function SavePosition()
     local x = right - uiRight
     local y = top - uiTop
 
-    BooshiesQuestLogDB.point = { "TOPRIGHT", "UIParent", "TOPRIGHT", x, y }
+    addon.Core.getDB().point = { "TOPRIGHT", "UIParent", "TOPRIGHT", x, y }
 
     frame:ClearAllPoints()
     frame:SetPoint("TOPRIGHT", parent, "TOPRIGHT", x, y)
@@ -922,7 +875,7 @@ local function RestorePosition()
 
     frame:ClearAllPoints()
 
-    local p = BooshiesQuestLogDB.point or DEFAULTS.point
+    local p = addon.Core.getDB().point or addon.Core.getDefaults().point
     local rel = _G[p[2]] or UIParent
 
     frame:SetPoint(p[1], rel, p[3], p[4], p[5])
@@ -930,9 +883,9 @@ local function RestorePosition()
 end
 
 
--- =============================================================================
+--------------------------------------------------------------------------------
 -- LAYOUT & SCROLL
--- =============================================================================
+--------------------------------------------------------------------------------
 
 local function RelayoutLayout(layout)
 
@@ -973,7 +926,7 @@ local function RelayoutLayout(layout)
     local contentHeight = math.max(y - trailingGap, 1)
     content:SetHeight(contentHeight)
 
-    local maxH = BooshiesQuestLogDB.maxHeight or 300
+    local maxH = addon.Core.getDB().maxHeight or 300
     local finalHeight = math.max(maxH, MIN_MAX_HEIGHT)
     frame:SetHeight(finalHeight)
 
@@ -996,7 +949,7 @@ local function RelayoutLayout(layout)
         end
     end
 
-    local frameWidth = frame:GetWidth() or (BooshiesQuestLogDB.width or 280)
+    local frameWidth = frame:GetWidth() or (addon.Core.getDB().width or 280)
     local contentWidth = frameWidth - 8 - (barVisible and 26 or 8)
     content:SetWidth(math.max(contentWidth, 1))
 
@@ -1041,9 +994,9 @@ local function ScrollIntoView(child, padding)
 end
 
 
--- =============================================================================
+--------------------------------------------------------------------------------
 -- ROW EXPAND/COLLAPSE
--- =============================================================================
+--------------------------------------------------------------------------------
 
 local function CollapseRow(row)
 
@@ -1261,7 +1214,7 @@ local function ExpandRow(row)
     row.expanded = true
     row.arrow:SetTexture(UI_TEXTURES.minusButton)
 
-    local contentW = (content and content:GetWidth()) or ((BooshiesQuestLogDB.width or 280) - 40)
+    local contentW = (content and content:GetWidth()) or ((addon.Core.getDB().width or 280) - 40)
     local objW = math.max(contentW - OBJ_LEFT_INDENT - OBJ_RIGHT_MARGIN, 60)
 
     local objectives = FetchObjectivesFor(row)
@@ -1291,9 +1244,9 @@ local function ExpandRow(row)
 end
 
 
--- =============================================================================
+--------------------------------------------------------------------------------
 -- DETAILS DIALOGS
--- =============================================================================
+--------------------------------------------------------------------------------
 
 local function OpenQuestDetails(questID)
 
@@ -1386,9 +1339,9 @@ local function OpenAchievementDetails(achID)
 end
 
 
--- =============================================================================
+--------------------------------------------------------------------------------
 -- UNTRACK
--- =============================================================================
+--------------------------------------------------------------------------------
 
 local function TryCall(fn, ...)
     if type(fn) ~= "function" then return false end
@@ -1456,9 +1409,9 @@ local function UntrackRow(row)
 end
 
 
--- =============================================================================
+--------------------------------------------------------------------------------
 -- DEBUG DUMPS
--- =============================================================================
+--------------------------------------------------------------------------------
 
 local function DumpQuestMetadata(questID)
 
@@ -1653,9 +1606,9 @@ local function DumpRecipeMetadata(recipeID)
 end
 
 
--- =============================================================================
+--------------------------------------------------------------------------------
 -- ROW LIFECYCLE
--- =============================================================================
+--------------------------------------------------------------------------------
 
 -- Prefixes for the strings returned by RowKey, used to identify a row across
 -- pool recycles (e.g. for the scroll pin and newly-tracked detection).
@@ -1718,11 +1671,11 @@ local function OnRowClick(row)
     local key = RowKey(row)
     if not key then return end
 
-    BooshiesQuestLogDB.expandedKeys = BooshiesQuestLogDB.expandedKeys or {}
-    if BooshiesQuestLogDB.expandedKeys[key] then
-        BooshiesQuestLogDB.expandedKeys[key] = nil
+    addon.Core.getDB().expandedKeys = addon.Core.getDB().expandedKeys or {}
+    if addon.Core.getDB().expandedKeys[key] then
+        addon.Core.getDB().expandedKeys[key] = nil
     else
-        BooshiesQuestLogDB.expandedKeys[key] = true
+        addon.Core.getDB().expandedKeys[key] = true
     end
 
     pendingScrollKey = key
@@ -1913,7 +1866,7 @@ local function BuildRowProgressBar(row)
         self.barFill:Show()
         local w = self.barBg:GetWidth()
         if not w or w <= 1 then
-            local cw = (content and content:GetWidth()) or ((BooshiesQuestLogDB.width or 280) - 40)
+            local cw = (content and content:GetWidth()) or ((addon.Core.getDB().width or 280) - 40)
             w = cw - 8
         end
         local clamped = math.min(math.max(pct or 0, 0), 1)
@@ -1975,7 +1928,7 @@ local function WireRowClick(row)
 
         -- Ctrl+Right: dump debug metadata (debug mode only).
         if IsControlKeyDown() and button == "RightButton" then
-            if BooshiesQuestLogDB.debug then
+            if addon.Core.getDB().debug then
                 if row.questID then
                     DumpQuestMetadata(row.questID)
                 elseif row.achievementID then
@@ -2062,9 +2015,9 @@ local function ReleaseRow(row)
 end
 
 
--- =============================================================================
+--------------------------------------------------------------------------------
 -- SECTION LIFECYCLE
--- =============================================================================
+--------------------------------------------------------------------------------
 
 local sectionPool, activeSections = {}, {}
 local SECTION_HEIGHT = 22
@@ -2113,8 +2066,8 @@ local function CreateSectionHeader()
         local cls = self.classification
         if cls == nil then return end
 
-        BooshiesQuestLogDB.collapsedSections = BooshiesQuestLogDB.collapsedSections or {}
-        BooshiesQuestLogDB.collapsedSections[cls] = not BooshiesQuestLogDB.collapsedSections[cls]
+        addon.Core.getDB().collapsedSections = addon.Core.getDB().collapsedSections or {}
+        addon.Core.getDB().collapsedSections[cls] = not addon.Core.getDB().collapsedSections[cls]
 
         pendingScrollKey = RowKey(self)
         pendingScrollExpiresAt = GetTime() + SCROLL_PIN_WINDOW
@@ -2151,7 +2104,7 @@ local function RenderSection(spec)
     hdr.title:SetText(spec.title)
     hdr.title:SetTextColor(unpack(UI_COLORS.sectionTitle))
 
-    local collapsed = (BooshiesQuestLogDB.collapsedSections or {})[spec.classification] and true or false
+    local collapsed = (addon.Core.getDB().collapsedSections or {})[spec.classification] and true or false
 
     hdr.count:SetText(#spec.items)
     hdr.arrow:SetTexture(collapsed and UI_TEXTURES.plusButton or UI_TEXTURES.minusButton)
@@ -2174,9 +2127,9 @@ local function RenderSection(spec)
 end
 
 
--- =============================================================================
+--------------------------------------------------------------------------------
 -- REFRESH PIPELINE
--- =============================================================================
+--------------------------------------------------------------------------------
 
 local function BuildQuestGroups(mapID, mapName)
 
@@ -2233,19 +2186,19 @@ local function DetectAndShowNewlyTracked(currentKeys)
         return
     end
 
-    BooshiesQuestLogDB.expandedKeys      = BooshiesQuestLogDB.expandedKeys      or {}
-    BooshiesQuestLogDB.collapsedSections = BooshiesQuestLogDB.collapsedSections or {}
+    addon.Core.getDB().expandedKeys      = addon.Core.getDB().expandedKeys      or {}
+    addon.Core.getDB().collapsedSections = addon.Core.getDB().collapsedSections or {}
 
     local lastNewKey
     for key in pairs(currentKeys) do
         if not previousTrackedKeys[key] then
             -- Mark expanded even if the zone filter is currently hiding this
             -- item, so it appears expanded next time it becomes visible.
-            BooshiesQuestLogDB.expandedKeys[key] = true
+            addon.Core.getDB().expandedKeys[key] = true
 
             local section = SectionForRowKey(key)
             if section ~= nil then
-                BooshiesQuestLogDB.collapsedSections[section] = nil
+                addon.Core.getDB().collapsedSections[section] = nil
             end
 
             pendingFlashKeys[key] = true
@@ -2305,7 +2258,7 @@ local function ApplyExpandedChrome()
     if zoneText and not zoneText:IsShown() then zoneText:Show() end
     if frame.resizer and not frame.resizer:IsShown() then frame.resizer:Show() end
 
-    frame:SetWidth(BooshiesQuestLogDB.width or 280)
+    frame:SetWidth(addon.Core.getDB().width or 280)
 
 end
 
@@ -2347,7 +2300,7 @@ end
 
 local function RenderAchievementSection(layout)
 
-    local hideAchievements = BooshiesQuestLogDB.filterByZone and not BooshiesQuestLogDB.alwaysShowAchievements
+    local hideAchievements = addon.Core.getDB().filterByZone and not addon.Core.getDB().alwaysShowAchievements
 
     RenderSection({
         classification = "achievements",
@@ -2386,7 +2339,7 @@ local function RenderRecipeSection(layout)
     RenderSection({
         classification = "recipes",
         title          = "Crafting",
-        items          = BooshiesQuestLogDB.filterByZone and {} or GetTrackedRecipeList(),
+        items          = addon.Core.getDB().filterByZone and {} or GetTrackedRecipeList(),
         layout         = layout,
         populateRow    = function(recipeID)
 
@@ -2414,7 +2367,7 @@ local function RenderActivitySection(layout)
     RenderSection({
         classification = "activities",
         title          = "Monthly",
-        items          = BooshiesQuestLogDB.filterByZone and {} or GetTrackedMonthlyActivities(),
+        items          = addon.Core.getDB().filterByZone and {} or GetTrackedMonthlyActivities(),
         layout         = layout,
         populateRow    = function(actID)
 
@@ -2445,7 +2398,7 @@ local function RenderInitiativeSection(layout)
     RenderSection({
         classification = "initiatives",
         title          = "Endeavours",
-        items          = BooshiesQuestLogDB.filterByZone and {} or GetTrackedInitiativeTasks(),
+        items          = addon.Core.getDB().filterByZone and {} or GetTrackedInitiativeTasks(),
         layout         = layout,
         populateRow    = function(taskID)
 
@@ -2472,7 +2425,7 @@ end
 
 local function ApplyExpansionState(layout)
 
-    local expandedKeys = BooshiesQuestLogDB.expandedKeys or {}
+    local expandedKeys = addon.Core.getDB().expandedKeys or {}
     if not next(expandedKeys) then return end
 
     -- First layout pass so ExpandRow has resolved frame positions to measure from
@@ -2536,7 +2489,7 @@ end
 local function RefreshUI()
 
     if not frame then return end
-    if not BooshiesQuestLogDB.enabled then frame:Hide(); return end
+    if not addon.Core.getDB().enabled then frame:Hide(); return end
     if settingsFrame and settingsFrame:IsShown() then return end
 
     frame:Show()
@@ -2547,7 +2500,7 @@ local function RefreshUI()
     local groups, total, snapshot = BuildQuestGroups(mapID, mapName)
     titleText:SetText(("Quests (%d)"):format(total))
 
-    if BooshiesQuestLogDB.collapsed then
+    if addon.Core.getDB().collapsed then
         ReleaseAllRowsAndSections()
         ApplyCollapsedChrome()
         return
@@ -2580,9 +2533,9 @@ end
 Refresh = function() SafeCall("Refresh", RefreshUI) end
 
 
--- =============================================================================
+--------------------------------------------------------------------------------
 -- BLIZZARD TRACKER INTEGRATION
--- =============================================================================
+--------------------------------------------------------------------------------
 
 local BLIZZARD_QUEST_MODULES = {
     "QuestObjectiveTracker",
@@ -2628,7 +2581,7 @@ end
 
 local function ApplyBlizzardTrackerState()
 
-    local shouldHide = BooshiesQuestLogDB.hideBlizzardTracker and true or false
+    local shouldHide = addon.Core.getDB().hideBlizzardTracker and true or false
 
     for _, name in ipairs(BLIZZARD_QUEST_MODULES) do
         local m = _G[name]
@@ -2695,9 +2648,9 @@ local function ApplyFlatSkin(f)
     -- Apply current user-tweakable settings now so the frame matches the
     -- saved appearance immediately, not only after the next ApplySettings.
     local r, g, b = unpack(UI_COLORS.dialogBackdrop)
-    bg:SetColorTexture(r, g, b, BooshiesQuestLogDB.backdropAlpha or UI_COLORS.dialogBackdrop[4])
+    bg:SetColorTexture(r, g, b, addon.Core.getDB().backdropAlpha or UI_COLORS.dialogBackdrop[4])
     for _, t in pairs(edges) do
-        t:SetShown(not BooshiesQuestLogDB.hideBorder)
+        t:SetShown(not addon.Core.getDB().hideBorder)
     end
 
 end
@@ -2705,8 +2658,8 @@ end
 local function ApplyAppearance()
 
     local r, g, b = unpack(UI_COLORS.dialogBackdrop)
-    local alpha = BooshiesQuestLogDB.backdropAlpha or UI_COLORS.dialogBackdrop[4]
-    local showBorder = not BooshiesQuestLogDB.hideBorder
+    local alpha = addon.Core.getDB().backdropAlpha or UI_COLORS.dialogBackdrop[4]
+    local showBorder = not addon.Core.getDB().hideBorder
 
     for _, f in ipairs(skinnedFrames) do
         if f.backdrop then
@@ -2722,9 +2675,9 @@ local function ApplyAppearance()
 end
 
 
--- =============================================================================
+--------------------------------------------------------------------------------
 -- SETTINGS UI
--- =============================================================================
+--------------------------------------------------------------------------------
 
 local SETTINGS_SPEC = {
     { key = "filterByZone",           label = "Filter Quests by Current Zone" },
@@ -2855,7 +2808,7 @@ local function BuildSettingsUI()
     settingsFrame.applyBtn = applyBtn
 
     -- y is the bottom of the last row; +44 reserves space for the bottom button row.
-    settingsFrame:SetSize(BooshiesQuestLogDB.width or 280, y + 44)
+    settingsFrame:SetSize(addon.Core.getDB().width or 280, y + 44)
 
 end
 
@@ -2877,7 +2830,7 @@ function ShowSettings()
     settingsFrame:SetWidth(frame:GetWidth())
 
     for _, row in ipairs(settingsFrame.rows) do
-        row:setValue(BooshiesQuestLogDB[row.key])
+        row:setValue(addon.Core.getDB()[row.key])
     end
 
     wipe(settingsFrame.pending)
@@ -2902,12 +2855,12 @@ function ApplySettings()
     end
 
     for key, val in pairs(settingsFrame.pending) do
-        BooshiesQuestLogDB[key] = val
+        addon.Core.getDB()[key] = val
     end
     wipe(settingsFrame.pending)
 
     if frame and frame.filterBtn then
-        frame.filterBtn:SetChecked(BooshiesQuestLogDB.filterByZone)
+        frame.filterBtn:SetChecked(addon.Core.getDB().filterByZone)
     end
 
     ApplyBlizzardTrackerState()
@@ -2918,9 +2871,9 @@ function ApplySettings()
 end
 
 
--- =============================================================================
+--------------------------------------------------------------------------------
 -- HELP UI
--- =============================================================================
+--------------------------------------------------------------------------------
 
 local helpFrame
 
@@ -2995,19 +2948,19 @@ end
 function HideHelp()
 
     if helpFrame then helpFrame:Hide() end
-    BooshiesQuestLogDB.helpShown = true
+    addon.Core.getDB().helpShown = true
 
 end
 
 
--- =============================================================================
+--------------------------------------------------------------------------------
 -- MAIN UI CONSTRUCTION
--- =============================================================================
+--------------------------------------------------------------------------------
 
 local function BuildMainFrame()
 
     frame = CreateFrame("Frame", "BooshiesQuestLogFrame", UIParent)
-    frame:SetSize(BooshiesQuestLogDB.width or 280, 200)
+    frame:SetSize(addon.Core.getDB().width or 280, 200)
     frame:SetFrameStrata("MEDIUM")
     frame:SetMovable(true)
     frame:EnableMouse(true)
@@ -3025,7 +2978,7 @@ local function BuildHeader()
     header:SetHeight(30)
     header:RegisterForDrag("LeftButton")
     header:SetScript("OnDragStart", function()
-        if not BooshiesQuestLogDB.lockPosition then frame:StartMoving() end
+        if not addon.Core.getDB().lockPosition then frame:StartMoving() end
     end)
     header:SetScript("OnDragStop", function()
         frame:StopMovingOrSizing()
@@ -3045,14 +2998,14 @@ local function BuildHeader()
     titleBtn:RegisterForClicks("LeftButtonUp")
     titleBtn:RegisterForDrag("LeftButton")
     titleBtn:SetScript("OnDragStart", function()
-        if not BooshiesQuestLogDB.lockPosition then frame:StartMoving() end
+        if not addon.Core.getDB().lockPosition then frame:StartMoving() end
     end)
     titleBtn:SetScript("OnDragStop", function()
         frame:StopMovingOrSizing()
         SavePosition()
     end)
     titleBtn:SetScript("OnClick", function()
-        BooshiesQuestLogDB.collapsed = not BooshiesQuestLogDB.collapsed
+        addon.Core.getDB().collapsed = not addon.Core.getDB().collapsed
         Refresh()
     end)
     frame.titleBtn = titleBtn
@@ -3089,7 +3042,7 @@ local function BuildHeaderButtons()
     local filterBtn = CreateFrame("CheckButton", "BooshiesQuestLogFilterToggle", header, "UICheckButtonTemplate")
     filterBtn:SetSize(18, 18)
     filterBtn:SetPoint("RIGHT", cogBtn, "LEFT", -6, 0)
-    filterBtn:SetChecked(BooshiesQuestLogDB.filterByZone)
+    filterBtn:SetChecked(addon.Core.getDB().filterByZone)
     filterBtn:SetHitRectInsets(-3, -3, -3, -3)
 
     local filterLabel = filterBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -3097,7 +3050,7 @@ local function BuildHeaderButtons()
     filterLabel:SetText("Zone")
 
     filterBtn:SetScript("OnClick", function(self)
-        BooshiesQuestLogDB.filterByZone = self:GetChecked()
+        addon.Core.getDB().filterByZone = self:GetChecked()
         Refresh()
     end)
     filterBtn:SetScript("OnEnter", function(self)
@@ -3125,13 +3078,13 @@ local function BuildHeaderButtons()
     collapseAllBtn:SetScript("OnEnter", function() collapseAllText:SetTextColor(unpack(UI_COLORS.collapseAllHover)) end)
     collapseAllBtn:SetScript("OnLeave", function() collapseAllText:SetTextColor(unpack(UI_COLORS.collapseAllText)) end)
     collapseAllBtn:SetScript("OnClick", function()
-        BooshiesQuestLogDB.expandedKeys = {}
-        BooshiesQuestLogDB.collapsedSections = BooshiesQuestLogDB.collapsedSections or {}
+        addon.Core.getDB().expandedKeys = {}
+        addon.Core.getDB().collapsedSections = addon.Core.getDB().collapsedSections or {}
         for _, cls in ipairs(CLASSIFICATION_ORDER) do
-            BooshiesQuestLogDB.collapsedSections[cls] = true
+            addon.Core.getDB().collapsedSections[cls] = true
         end
         for _, k in ipairs({ "achievements", "recipes", "activities", "initiatives" }) do
-            BooshiesQuestLogDB.collapsedSections[k] = true
+            addon.Core.getDB().collapsedSections[k] = true
         end
         Refresh()
     end)
@@ -3146,7 +3099,7 @@ local function BuildScrollArea()
     scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -8, BOTTOM_PAD)
 
     content = CreateFrame("Frame", nil, scrollFrame)
-    content:SetSize((BooshiesQuestLogDB.width or 280) - 40, 1)
+    content:SetSize((addon.Core.getDB().width or 280) - 40, 1)
     scrollFrame:SetScrollChild(content)
 
     local bar = scrollFrame.ScrollBar or _G["BooshiesQuestLogScrollScrollBar"]
@@ -3192,8 +3145,8 @@ local function BuildResizer()
         local newMax = math.floor(self._dragStartMax + delta + 0.5)
         if newMax < MIN_MAX_HEIGHT then newMax = MIN_MAX_HEIGHT end
         if newMax > MAX_RESIZE_HEIGHT then newMax = MAX_RESIZE_HEIGHT end
-        if newMax ~= BooshiesQuestLogDB.maxHeight then
-            BooshiesQuestLogDB.maxHeight = newMax
+        if newMax ~= addon.Core.getDB().maxHeight then
+            addon.Core.getDB().maxHeight = newMax
             Refresh()
         end
     end
@@ -3201,7 +3154,7 @@ local function BuildResizer()
     resizer:SetScript("OnMouseDown", function(self, button)
         if button ~= "LeftButton" then return end
         self._dragStartY = select(2, GetCursorPosition()) / UIParent:GetEffectiveScale()
-        self._dragStartMax = BooshiesQuestLogDB.maxHeight or DEFAULT_MAX_HEIGHT
+        self._dragStartMax = addon.Core.getDB().maxHeight or DEFAULT_MAX_HEIGHT
         self:SetScript("OnUpdate", dragUpdate)
     end)
 
@@ -3230,9 +3183,9 @@ local function BuildUI()
 end
 
 
--- =============================================================================
+--------------------------------------------------------------------------------
 -- SUPER-TRACK STATE
--- =============================================================================
+--------------------------------------------------------------------------------
 
 local function UpdateSuperTrackState()
 
@@ -3261,9 +3214,9 @@ ToggleSuperTrack = function(questID)
 end
 
 
--- =============================================================================
+--------------------------------------------------------------------------------
 -- EVENTS
--- =============================================================================
+--------------------------------------------------------------------------------
 
 local pending = false
 
@@ -3321,8 +3274,7 @@ ev:SetScript("OnEvent", function(self, event, arg1)
     SafeCall("OnEvent:" .. tostring(event), function()
 
         if event == "ADDON_LOADED" then
-            if arg1 == ADDON_NAME then
-                InitDB()
+            if arg1 == addonName then
                 if C_NeighborhoodInitiative and C_NeighborhoodInitiative.RequestNeighborhoodInitiativeInfo then
                     pcall(C_NeighborhoodInitiative.RequestNeighborhoodInitiativeInfo)
                 end
@@ -3333,7 +3285,7 @@ ev:SetScript("OnEvent", function(self, event, arg1)
             ApplyBlizzardTrackerState()
             Reschedule()
 
-            if not BooshiesQuestLogDB.helpShown then ShowHelp() end
+            if not addon.Core.getDB().helpShown then ShowHelp() end
 
         elseif event == "PLAYER_ENTERING_WORLD" then
             ApplyBlizzardTrackerState()
@@ -3353,9 +3305,9 @@ ev:SetScript("OnEvent", function(self, event, arg1)
 end)
 
 
--- =============================================================================
+--------------------------------------------------------------------------------
 -- SLASH COMMANDS
--- =============================================================================
+--------------------------------------------------------------------------------
 
 local function PrintStatus(label, value)
     print(("|cff4fc3f7BQL:|r %s %s"):format(label, value and "|cff00ff00on|r" or "|cffff6666off|r"))
@@ -3368,13 +3320,13 @@ SlashCmdList["BOOSHIESQUESTLOG"] = function(msg)
     msg = (msg or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
 
     if msg == "" or msg == "toggle" then
-        BooshiesQuestLogDB.enabled = not BooshiesQuestLogDB.enabled
-        PrintStatus("tracker", BooshiesQuestLogDB.enabled)
+        addon.Core.getDB().enabled = not addon.Core.getDB().enabled
+        PrintStatus("tracker", addon.Core.getDB().enabled)
         Refresh()
     elseif msg == "reset" then
-        BooshiesQuestLogDB.point = DEFAULTS.point
-        BooshiesQuestLogDB.maxHeight = DEFAULTS.maxHeight
-        BooshiesQuestLogDB.helpShown = false
+        addon.Core.getDB().point = addon.Core.getDefaults().point
+        addon.Core.getDB().maxHeight = addon.Core.getDefaults().maxHeight
+        addon.Core.getDB().helpShown = false
         RestorePosition()
         Refresh()
         ShowHelp()
