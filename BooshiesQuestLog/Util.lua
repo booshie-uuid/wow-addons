@@ -106,3 +106,41 @@ function Util.getMapName(mapID)
     return info and info.name
 
 end
+
+-- Bank is included so reagents stashed there still count toward recipe progress,
+-- matching what Blizzard's own recipe tracker shows.
+function Util.itemCount(itemID)
+
+    if not itemID then return 0 end
+
+    if C_Item and C_Item.GetItemCount then
+        local ok, n = pcall(C_Item.GetItemCount, itemID, true, false, true)
+        if ok and n then return n end
+    end
+
+    if _G.GetItemCount then
+        local ok, n = pcall(GetItemCount, itemID, true, false, true)
+        if ok and n then return n end
+    end
+
+    return 0
+
+end
+
+function Util.itemName(itemID)
+
+    if not itemID then return "?" end
+
+    if C_Item and C_Item.GetItemNameByID then
+        local n = C_Item.GetItemNameByID(itemID)
+        if n then return n end
+    end
+
+    if _G.GetItemInfo then
+        local n = GetItemInfo(itemID)
+        if n then return n end
+    end
+
+    return "Item " .. itemID
+
+end

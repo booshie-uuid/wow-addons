@@ -8,5 +8,7 @@
 
 Core.lua
 Util.lua
+BlizzardInterface.lua
+Debug.lua
 UI\Theme.lua
 BooshiesQuestLog.lua
