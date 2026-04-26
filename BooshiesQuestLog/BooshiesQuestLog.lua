@@ -2,90 +2,6 @@ local addonName, addon = ...
 
 
 --------------------------------------------------------------------------------
--- BOOTSTRAP & CORE UTILITIES
---------------------------------------------------------------------------------
-
-local observedErrors = {}
-local function SafeCall(label, fn, ...)
-
-    local ok, err = pcall(fn, ...)
-
-    if not ok and err then
-        local msg = tostring(err)
-        if not observedErrors[msg] then
-            observedErrors[msg] = true
-            print(("|cffff6666BQL error [%s]:|r %s"):format(label or "?", msg))
-        end
-    end
-
-    return ok
-
-end
-
--- Entries lacking progress info still count toward the denominator so the
--- average matches what a user would expect ("3 of 5 done" with 2 unknowns
--- reads as 3/5, not 3/3).
-local function ComputeProgress(list)
-
-    if not list or #list == 0 then return 0, false end
-
-    local sum, count = 0, 0
-
-    for _, item in ipairs(list) do
-        if item.finished then
-            sum = sum + 1
-            count = count + 1
-        elseif item.numRequired and item.numRequired > 0 then
-            local f = (item.numFulfilled or 0) / item.numRequired
-            if f > 1 then f = 1 elseif f < 0 then f = 0 end
-
-            sum = sum + f
-            count = count + 1
-        else
-            count = count + 1
-        end
-    end
-
-    if count == 0 then return 0, false end
-    return sum / count, true
-
-end
-
--- Probes WoW API records that ship the same data under different field
--- names across game versions.
-local function FirstNonEmptyField(obj, keys)
-
-    if type(obj) ~= "table" then return nil end
-
-    for _, k in ipairs(keys) do
-        local v = obj[k]
-        if type(v) == "table" and #v > 0 then return v end
-    end
-
-    return nil
-
-end
-
-local function TryAppendIDs(list, seen, fn, ...)
-
-    local ok, ids = pcall(fn, ...)
-    if not ok or type(ids) ~= "table" then return false end
-
-    local appended = false
-    for _, id in ipairs(ids) do
-        if id and id ~= 0 and (not seen or not seen[id]) then
-            list[#list + 1] = id
-            if seen then seen[id] = true end
-            appended = true
-        end
-    end
-
-    return appended
-
-end
-
-
---------------------------------------------------------------------------------
 -- LOOKUPS
 --------------------------------------------------------------------------------
 
@@ -104,24 +20,6 @@ local CLASSIFICATION_NAMES = {
 }
 
 local CLASSIFICATION_ORDER = { 2, 0, 4, 5, 1, 6, 9, 7, 3, 10, 8 }
-
-
---------------------------------------------------------------------------------
--- MAP & ZONE HELPERS
---------------------------------------------------------------------------------
-
-local function GetPlayerZoneMapID()
-    return C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
-end
-
-local function GetMapName(mapID)
-
-    if not mapID then return nil end
-
-    local info = C_Map.GetMapInfo(mapID)
-    return info and info.name
-
-end
 
 
 --------------------------------------------------------------------------------
@@ -245,7 +143,7 @@ end
 --------------------------------------------------------------------------------
 
 local function GetQuestProgress(questID)
-    return ComputeProgress(C_QuestLog.GetQuestObjectives(questID))
+    return addon.Util.computeProgress(C_QuestLog.GetQuestObjectives(questID))
 end
 
 local function IsQuestWatched(questID)
@@ -283,13 +181,13 @@ local function GetTrackedAchievementList()
     local list = {}
 
     if _G.GetTrackedAchievements then
-        TryAppendIDs(list, nil, function() return { GetTrackedAchievements() } end)
+        addon.Util.tryAppendIDs(list, nil, function() return { GetTrackedAchievements() } end)
     end
 
     if #list == 0 and C_ContentTracking and C_ContentTracking.GetTrackedIDs then
         local t = Enum and Enum.ContentTrackingType and Enum.ContentTrackingType.Achievement
         if t ~= nil then
-            TryAppendIDs(list, nil, C_ContentTracking.GetTrackedIDs, t)
+            addon.Util.tryAppendIDs(list, nil, C_ContentTracking.GetTrackedIDs, t)
         end
     end
 
@@ -360,7 +258,7 @@ local function GetAchievementProgress(achID)
         return completed and 1 or 0, completed
     end
 
-    return ComputeProgress(GetAchievementCriteriaList(achID))
+    return addon.Util.computeProgress(GetAchievementCriteriaList(achID))
 
 end
 
@@ -375,8 +273,8 @@ local function GetTrackedRecipeList()
     if not C_TradeSkillUI or not C_TradeSkillUI.GetRecipesTracked then return list end
 
     local seen = {}
-    TryAppendIDs(list, seen, C_TradeSkillUI.GetRecipesTracked, false)
-    TryAppendIDs(list, seen, C_TradeSkillUI.GetRecipesTracked, true)
+    addon.Util.tryAppendIDs(list, seen, C_TradeSkillUI.GetRecipesTracked, false)
+    addon.Util.tryAppendIDs(list, seen, C_TradeSkillUI.GetRecipesTracked, true)
 
     return list
 
@@ -468,7 +366,7 @@ local function GetRecipeReagents(recipeID)
 end
 
 local function GetRecipeProgress(recipeID)
-    return ComputeProgress(GetRecipeReagents(recipeID))
+    return addon.Util.computeProgress(GetRecipeReagents(recipeID))
 end
 
 
@@ -503,7 +401,7 @@ local function GetTrackedMonthlyActivities()
     local list = {}
 
     if C_PerksActivities and C_PerksActivities.GetTrackedPerksActivities then
-        if TryAppendIDs(list, nil, C_PerksActivities.GetTrackedPerksActivities) then
+        if addon.Util.tryAppendIDs(list, nil, C_PerksActivities.GetTrackedPerksActivities) then
             return list
         end
     end
@@ -563,7 +461,7 @@ local function GetTrackedInitiativeTasks()
     if not C_NeighborhoodInitiative then return list end
 
     if C_NeighborhoodInitiative.GetTrackedInitiativeTasks then
-        if TryAppendIDs(list, nil, C_NeighborhoodInitiative.GetTrackedInitiativeTasks) then
+        if addon.Util.tryAppendIDs(list, nil, C_NeighborhoodInitiative.GetTrackedInitiativeTasks) then
             return list
         end
     end
@@ -608,7 +506,7 @@ local function GetInitiativeTaskObjectives(id)
     if not info then return {} end
 
     local list = {}
-    local criteria = FirstNonEmptyField(info, { "criteriaList", "requirementsList", "objectives", "conditions" })
+    local criteria = addon.Util.firstNonEmptyField(info, { "criteriaList", "requirementsList", "objectives", "conditions" })
 
     if criteria then
         for _, c in ipairs(criteria) do
@@ -657,7 +555,7 @@ local function GetInitiativeTaskProgress(id)
     if not info then return 0, false end
     if info.completed then return 1, true end
 
-    return ComputeProgress(GetInitiativeTaskObjectives(id))
+    return addon.Util.computeProgress(GetInitiativeTaskObjectives(id))
 
 end
 
@@ -676,7 +574,7 @@ local function GetActivityObjectives(id)
     if not info then return {} end
 
     local list = {}
-    local criteria = FirstNonEmptyField(info, { "criteriaList", "requirementsList", "conditions" })
+    local criteria = addon.Util.firstNonEmptyField(info, { "criteriaList", "requirementsList", "conditions" })
 
     if criteria then
         for _, c in ipairs(criteria) do
@@ -728,7 +626,7 @@ local function GetActivityProgress(id)
     if info.completed then return 1, true end
 
     local objs = GetActivityObjectives(id)
-    if #objs > 0 then return ComputeProgress(objs) end
+    if #objs > 0 then return addon.Util.computeProgress(objs) end
 
     local have = info.thresholdContributionAmount or 0
     local need = info.thresholdMax or info.requiredContributionAmount or 0
@@ -1385,8 +1283,8 @@ local function DumpQuestMetadata(questID)
     p("watchType: %s", tostring(C_QuestLog.GetQuestWatchType and C_QuestLog.GetQuestWatchType(questID)))
     p("superTracked: %s", tostring(C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID() == questID))
 
-    local mapID = GetPlayerZoneMapID()
-    local mapName = GetMapName(mapID) or "?"
+    local mapID = addon.Util.getPlayerZoneMapID()
+    local mapName = addon.Util.getMapName(mapID) or "?"
     p("player map: %s (%s)", tostring(mapID), mapName)
 
     local onThisMap = false
@@ -2437,8 +2335,8 @@ local function RefreshUI()
 
     frame:Show()
 
-    local mapID = GetPlayerZoneMapID()
-    local mapName = GetMapName(mapID) or "Unknown"
+    local mapID = addon.Util.getPlayerZoneMapID()
+    local mapName = addon.Util.getMapName(mapID) or "Unknown"
 
     local groups, total, snapshot = BuildQuestGroups(mapID, mapName)
     titleText:SetText(("Quests (%d)"):format(total))
@@ -2473,7 +2371,7 @@ local function RefreshUI()
 
 end
 
-Refresh = function() SafeCall("Refresh", RefreshUI) end
+Refresh = function() addon.Util.safeCall("Refresh", RefreshUI) end
 
 
 --------------------------------------------------------------------------------
@@ -3097,7 +2995,7 @@ local function Reschedule()
 
     C_Timer.After(0.05, function()
         pending = false
-        SafeCall("Reschedule", Refresh)
+        addon.Util.safeCall("Reschedule", Refresh)
     end)
 
 end
@@ -3141,7 +3039,7 @@ for _, e in ipairs(REQUIRED_EVENTS) do ev:RegisterEvent(e) end
 for _, e in ipairs(OPTIONAL_EVENTS) do pcall(ev.RegisterEvent, ev, e) end
 
 ev:SetScript("OnEvent", function(self, event, arg1)
-    SafeCall("OnEvent:" .. tostring(event), function()
+    addon.Util.safeCall("OnEvent:" .. tostring(event), function()
 
         if event == "ADDON_LOADED" then
             if arg1 == addonName then
