@@ -485,14 +485,68 @@ end
 -- PUBLIC API
 --------------------------------------------------------------------------------
 
-function BooshiesTracker.init(opts)
+function BooshiesTracker.init()
 
-    window      = opts.window
+    if window then return end
+
+    window = addon.UI.TrackerWindow.new({
+        name            = "BooshiesQuestLogFrame",
+        title           = "Quests",
+        width           = addon.Core.getDB().width,
+        loadPosition    = function() return addon.Core.getDB().point end,
+        savePosition    = function(p) addon.Core.getDB().point = p end,
+        defaultPosition = addon.Core.getDefaults().point,
+        isLocked        = function() return addon.Core.getDB().lockPosition end,
+        getMaxHeight    = function() return addon.Core.getDB().maxHeight end,
+        isZoneFilterChecked = function() return addon.Core.getDB().filterByZone end,
+
+        onTitleClick  = BooshiesTracker.toggleCollapsedTitlebar,
+        onSettings    = function() addon.UI.SettingsWindow.show() end,
+        onCollapseAll = BooshiesTracker.collapseAll,
+
+        onZoneFilterChange = function(checked)
+            addon.Core.getDB().filterByZone = checked
+            BooshiesTracker.refresh()
+        end,
+
+        onResize = function(newMax)
+            addon.Core.getDB().maxHeight = newMax
+            BooshiesTracker.refresh()
+        end,
+    })
+
     frame       = window.frame
     titleText   = window.titleText
     zoneText    = window.zoneText
     content     = window.content
     scrollFrame = window.scrollFrame
+
+    addon.UI.TrackerEntry.init({
+        content   = window.content,
+        onClick   = BooshiesTracker.handleEntryClick,
+        onRelease = addon.UI.ObjectivePanel.collapse,
+    })
+
+    addon.UI.TrackerSection.init({
+        content = window.content,
+        onClick = BooshiesTracker.handleSectionClick,
+    })
+
+    addon.UI.SettingsWindow.init({
+        getTrackerFrame = function() return window.frame end,
+        onApply         = BooshiesTracker.refresh,
+    })
+
+end
+
+function BooshiesTracker.resetPositionAndSize()
+
+    addon.Core.getDB().point = addon.Core.getDefaults().point
+    addon.Core.getDB().maxHeight = addon.Core.getDefaults().maxHeight
+
+    if window then window:restorePosition() end
+
+    BooshiesTracker.refresh()
 
 end
 

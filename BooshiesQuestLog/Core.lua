@@ -172,3 +172,38 @@ loader:SetScript("OnEvent", function(self, event, name)
     self:UnregisterEvent("ADDON_LOADED")
 
 end)
+
+
+--------------------------------------------------------------------------------
+-- SLASH COMMANDS
+--------------------------------------------------------------------------------
+
+local function printStatus(label, value)
+    print(("|cff4fc3f7BQL:|r %s %s"):format(label, value and "|cff00ff00on|r" or "|cffff6666off|r"))
+end
+
+SLASH_BOOSHIESQUESTLOG1 = "/bql"
+SLASH_BOOSHIESQUESTLOG2 = "/booshiesquestlog"
+SlashCmdList["BOOSHIESQUESTLOG"] = function(msg)
+
+    msg = (msg or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
+
+    if msg == "" or msg == "toggle" then
+        addon.Core.getDB().enabled = not addon.Core.getDB().enabled
+        printStatus("tracker", addon.Core.getDB().enabled)
+        addon.BooshiesTracker.refresh()
+
+    elseif msg == "reset" then
+        addon.BooshiesTracker.resetPositionAndSize()
+        addon.Core.getDB().helpShown = false
+        addon.UI.HelpWindow.show()
+        print("|cff4fc3f7BQL:|r position + height reset")
+
+    elseif msg == "refresh" then
+        addon.BooshiesTracker.refresh()
+
+    else
+        print("|cff4fc3f7BQL:|r /bql [toggle||reset||refresh]")
+    end
+
+end
