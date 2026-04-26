@@ -6,6 +6,10 @@ local Theme = {}
 addon.UI.Theme = Theme
 
 
+--------------------------------------------------------------------------------
+-- COLORS
+--------------------------------------------------------------------------------
+
 Theme.colors = {
     backdrop = { 0.05, 0.05, 0.07, 0.92 },
     border   = { 0.20, 0.20, 0.24, 1.00 },
@@ -21,18 +25,11 @@ Theme.colors = {
 }
 
 
-function Theme.colorize(color, text)
+--------------------------------------------------------------------------------
+-- LOCAL FUNCTIONS
+--------------------------------------------------------------------------------
 
-    return string.format("|cff%02x%02x%02x%s|r",
-        math.floor(color[1] * 255),
-        math.floor(color[2] * 255),
-        math.floor(color[3] * 255),
-        text)
-
-end
-
-
-local function MakeEdge(frame, side)
+local function makeEdge(frame, side)
 
     local t = frame:CreateTexture(nil, "BORDER")
     t:SetColorTexture(unpack(Theme.colors.border))
@@ -60,6 +57,10 @@ local function MakeEdge(frame, side)
 end
 
 
+--------------------------------------------------------------------------------
+-- PUBLIC API
+--------------------------------------------------------------------------------
+
 function Theme.applyFlatSkin(frame, bgColor)
 
     local color = bgColor or Theme.colors.backdrop
@@ -70,10 +71,20 @@ function Theme.applyFlatSkin(frame, bgColor)
     frame.backdrop = bg
 
     frame.edges = {
-        top    = MakeEdge(frame, "top"),
-        bottom = MakeEdge(frame, "bottom"),
-        left   = MakeEdge(frame, "left"),
-        right  = MakeEdge(frame, "right"),
+        top    = makeEdge(frame, "top"),
+        bottom = makeEdge(frame, "bottom"),
+        left   = makeEdge(frame, "left"),
+        right  = makeEdge(frame, "right"),
     }
+
+end
+
+function Theme.colorize(color, text)
+
+    return string.format("|cff%02x%02x%02x%s|r",
+        math.floor(color[1] * 255),
+        math.floor(color[2] * 255),
+        math.floor(color[3] * 255),
+        text)
 
 end

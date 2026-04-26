@@ -4,13 +4,23 @@ local EventManager = {}
 addon.EventManager = EventManager
 
 
-local frame = CreateFrame("Frame")
-local capturing = false
-local subscribers = {}
+--------------------------------------------------------------------------------
+-- LOCAL STATE
+--------------------------------------------------------------------------------
+
+local frame            = CreateFrame("Frame")
+local capturing        = false
+local subscribers      = {}
 local stateSubscribers = {}
 
 
-local function Notify(list, ...)
+--------------------------------------------------------------------------------
+-- LOCAL FUNCTIONS
+--------------------------------------------------------------------------------
+
+-- NOTIFICATIONS --------------------------------------------------------------
+
+local function notify(list, ...)
 
     for i = 1, #list do
         local fn = list[i]
@@ -21,10 +31,32 @@ local function Notify(list, ...)
 
 end
 
-local function NotifyState()
-    Notify(stateSubscribers, capturing)
+local function notifyState()
+    notify(stateSubscribers, capturing)
 end
 
+-- SUBSCRIPTIONS --------------------------------------------------------------
+
+local function addListener(list, fn)
+
+    table.insert(list, fn)
+
+    -- return unsubscribe function
+    return function()
+        for i = #list, 1, -1 do
+            if list[i] == fn then
+                table.remove(list, i)
+                return
+            end
+        end
+    end
+
+end
+
+
+--------------------------------------------------------------------------------
+-- CAPTURE STATE API
+--------------------------------------------------------------------------------
 
 function EventManager.isCapturing()
     return capturing
@@ -36,7 +68,7 @@ function EventManager.start()
 
     capturing = true
     frame:RegisterAllEvents()
-    NotifyState()
+    notifyState()
 
 end
 
@@ -46,7 +78,7 @@ function EventManager.stop()
 
     capturing = false
     frame:UnregisterAllEvents()
-    NotifyState()
+    notifyState()
 
 end
 
@@ -61,34 +93,27 @@ function EventManager.toggle()
 end
 
 
-local function AddListener(list, fn)
-
-    table.insert(list, fn)
-
-    return function()
-        for i = #list, 1, -1 do
-            if list[i] == fn then
-                table.remove(list, i)
-                return
-            end
-        end
-    end
-
-end
+--------------------------------------------------------------------------------
+-- SUBSCRIPTIONS API
+--------------------------------------------------------------------------------
 
 function EventManager.subscribe(fn)
-    return AddListener(subscribers, fn)
+    return addListener(subscribers, fn)
 end
 
 function EventManager.subscribeToState(fn)
-    return AddListener(stateSubscribers, fn)
+    return addListener(stateSubscribers, fn)
 end
 
+
+--------------------------------------------------------------------------------
+-- WIRING
+--------------------------------------------------------------------------------
 
 frame:SetScript("OnEvent", function(self, event, ...)
 
     if not capturing then return end
 
-    Notify(subscribers, event, ...)
+    notify(subscribers, event, ...)
 
 end)

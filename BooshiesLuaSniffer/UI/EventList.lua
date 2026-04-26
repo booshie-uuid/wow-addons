@@ -6,10 +6,20 @@ local EventList = {}
 addon.UI.EventList = EventList
 
 
+--------------------------------------------------------------------------------
+-- LOCAL CONSTANTS
+--------------------------------------------------------------------------------
+
 local AGE_REFRESH_PERIOD = 1.0
 
 
-local function FormatCount(count)
+--------------------------------------------------------------------------------
+-- LOCAL FUNCTIONS
+--------------------------------------------------------------------------------
+
+-- FORMATTERS -----------------------------------------------------------------
+
+local function formatCount(count)
 
     if not count then return "" end
 
@@ -22,7 +32,7 @@ local function FormatCount(count)
 
 end
 
-local function FormatLastSeen(t)
+local function formatLastSeen(t)
 
     if not t then return "" end
 
@@ -45,8 +55,9 @@ local function FormatLastSeen(t)
 
 end
 
+-- WIDGETS --------------------------------------------------------------------
 
-local function CreateLabeledCheckbox(parent, text, getInitial, onChange)
+local function createLabeledCheckbox(parent, text, getInitial, onChange)
 
     local cb = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
     cb:SetSize(18, 18)
@@ -65,14 +76,18 @@ local function CreateLabeledCheckbox(parent, text, getInitial, onChange)
 end
 
 
+--------------------------------------------------------------------------------
+-- PUBLIC API
+--------------------------------------------------------------------------------
+
 function EventList.attach(parent)
 
     local panel = addon.UI.ListPanel.new(parent, {
         title   = "Captured Events",
         columns = {
             { key = "name",     header = "Event",     width = 0,   justify = "LEFT"  },
-            { key = "count",    header = "Count",     width = 60,  justify = "RIGHT", format = FormatCount },
-            { key = "lastSeen", header = "Last Seen", width = 70,  justify = "RIGHT", format = FormatLastSeen },
+            { key = "count",    header = "Count",     width = 60,  justify = "RIGHT", format = formatCount },
+            { key = "lastSeen", header = "Last Seen", width = 70,  justify = "RIGHT", format = formatLastSeen },
         },
         onRightClick = function(item) addon.EventCapture.exclude(item.name) end,
     })
@@ -81,12 +96,12 @@ function EventList.attach(parent)
         panel:setItems(addon.EventCapture.getEntries())
     end
 
-    local execOrderCb = CreateLabeledCheckbox(panel.frame, "Execution Order",
+    local execOrderCb = createLabeledCheckbox(panel.frame, "Execution Order",
         function() return addon.EventCapture.isExecutionOrder() end,
         function(v) addon.EventCapture.setExecutionOrder(v) end)
     execOrderCb:SetPoint("BOTTOMRIGHT", panel:getTableRightAnchor(), "TOPRIGHT", 0, 4)
 
-    local hideOlderCb = CreateLabeledCheckbox(panel.frame, "Hide Older",
+    local hideOlderCb = createLabeledCheckbox(panel.frame, "Hide Older",
         function() return addon.EventCapture.isHideOlder() end,
         function(v) addon.EventCapture.setHideOlder(v) end)
     hideOlderCb:SetPoint("RIGHT", execOrderCb.label, "LEFT", -16, 0)

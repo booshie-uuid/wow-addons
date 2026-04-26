@@ -13,20 +13,38 @@ addon.Core.registerDefaults(NS, {
 })
 
 
+--------------------------------------------------------------------------------
+-- LOCAL CONSTANTS
+--------------------------------------------------------------------------------
+
+local NOTIFY_INTERVAL = 0.1
+local OLDER_THAN      = 60
+
+
+--------------------------------------------------------------------------------
+-- LOCAL STATE
+--------------------------------------------------------------------------------
+
 local byName    = {}
 local order     = {}
 local excluded  = {}
 local listeners = { entries = {}, exclusions = {} }
 
-local NOTIFY_INTERVAL = 0.1
-local entriesDirty    = false
+local entriesDirty = false
 
-local OLDER_THAN     = 60
+-- USER SETTINGS --------------------------------------------------------------
+
 local hideOlder      = false
 local executionOrder = false
 
 
-local function Notify(channel)
+--------------------------------------------------------------------------------
+-- LOCAL FUNCTIONS
+--------------------------------------------------------------------------------
+
+-- NOTIFICATIONS --------------------------------------------------------------
+
+local function notify(channel)
 
     local list = listeners[channel]
 
@@ -39,20 +57,21 @@ local function Notify(channel)
 
 end
 
-local function ScheduleEntriesNotify()
+local function scheduleEntriesNotify()
 
     if entriesDirty then return end
 
     entriesDirty = true
     C_Timer.After(NOTIFY_INTERVAL, function()
         entriesDirty = false
-        Notify("entries")
+        notify("entries")
     end)
 
 end
 
+-- EVENT PROCESSING -----------------------------------------------------------
 
-local function FormatArgs(...)
+local function formatArgs(...)
 
     local n = select("#", ...)
     if n == 0 then return nil end
@@ -67,7 +86,7 @@ local function FormatArgs(...)
 
 end
 
-local function MoveToTop(name)
+local function moveToTop(name)
 
     if order[1] == name then return end
 
@@ -82,7 +101,7 @@ local function MoveToTop(name)
 
 end
 
-local function OnEvent(event, ...)
+local function onEvent(event, ...)
 
     if excluded[event] then return end
 
@@ -97,17 +116,34 @@ local function OnEvent(event, ...)
         byName[event] = rec
         table.insert(order, 1, event)
     elseif executionOrder then
-        MoveToTop(event)
+        moveToTop(event)
     end
 
     rec.count    = rec.count + 1
     rec.lastSeen = GetTime()
-    rec.lastArgs = FormatArgs(...)
+    rec.lastArgs = formatArgs(...)
 
-    ScheduleEntriesNotify()
+    scheduleEntriesNotify()
 
 end
 
+-- PERSISTENCE ----------------------------------------------------------------
+
+local function persistExclusions()
+
+    local settings = addon.Core.getSettings(NS)
+    settings.excluded = {}
+
+    for name in pairs(excluded) do
+        settings.excluded[name] = true
+    end
+
+end
+
+
+--------------------------------------------------------------------------------
+-- INITIALIZATION
+--------------------------------------------------------------------------------
 
 function EventCapture.init()
 
@@ -120,10 +156,43 @@ function EventCapture.init()
     hideOlder      = settings.hideOlder and true or false
     executionOrder = settings.executionOrder and true or false
 
-    addon.EventManager.subscribe(OnEvent)
+    addon.EventManager.subscribe(onEvent)
 
 end
 
+
+--------------------------------------------------------------------------------
+-- SETTINGS API
+--------------------------------------------------------------------------------
+
+function EventCapture.isHideOlder()
+    return hideOlder
+end
+
+function EventCapture.setHideOlder(value)
+
+    hideOlder = value and true or false
+    addon.Core.getSettings(NS).hideOlder = hideOlder
+
+    notify("entries")
+
+end
+
+function EventCapture.isExecutionOrder()
+    return executionOrder
+end
+
+function EventCapture.setExecutionOrder(value)
+
+    executionOrder = value and true or false
+    addon.Core.getSettings(NS).executionOrder = executionOrder
+
+end
+
+
+--------------------------------------------------------------------------------
+-- ENTRIES API
+--------------------------------------------------------------------------------
 
 function EventCapture.getEntries()
 
@@ -145,29 +214,9 @@ function EventCapture.getEntries()
 end
 
 
-function EventCapture.isHideOlder()
-    return hideOlder
-end
-
-function EventCapture.setHideOlder(value)
-
-    hideOlder = value and true or false
-    addon.Core.getSettings(NS).hideOlder = hideOlder
-
-    Notify("entries")
-
-end
-
-function EventCapture.isExecutionOrder()
-    return executionOrder
-end
-
-function EventCapture.setExecutionOrder(value)
-
-    executionOrder = value and true or false
-    addon.Core.getSettings(NS).executionOrder = executionOrder
-
-end
+--------------------------------------------------------------------------------
+-- EXCLUSIONS API
+--------------------------------------------------------------------------------
 
 function EventCapture.getExclusions()
 
@@ -182,27 +231,15 @@ function EventCapture.getExclusions()
 
 end
 
-
-local function PersistExclusions()
-
-    local settings = addon.Core.getSettings(NS)
-    settings.excluded = {}
-
-    for name in pairs(excluded) do
-        settings.excluded[name] = true
-    end
-
-end
-
 function EventCapture.exclude(name)
 
     if not name or excluded[name] then return end
 
     excluded[name] = true
-    PersistExclusions()
+    persistExclusions()
 
-    Notify("entries")
-    Notify("exclusions")
+    notify("entries")
+    notify("exclusions")
 
 end
 
@@ -211,10 +248,10 @@ function EventCapture.include(name)
     if not name or not excluded[name] then return end
 
     excluded[name] = nil
-    PersistExclusions()
+    persistExclusions()
 
-    Notify("entries")
-    Notify("exclusions")
+    notify("entries")
+    notify("exclusions")
 
 end
 
@@ -223,10 +260,10 @@ function EventCapture.clearExclusions()
     if not next(excluded) then return end
 
     excluded = {}
-    PersistExclusions()
+    persistExclusions()
 
-    Notify("entries")
-    Notify("exclusions")
+    notify("entries")
+    notify("exclusions")
 
 end
 
@@ -245,13 +282,17 @@ function EventCapture.excludeAll()
 
     if not changed then return end
 
-    PersistExclusions()
+    persistExclusions()
 
-    Notify("entries")
-    Notify("exclusions")
+    notify("entries")
+    notify("exclusions")
 
 end
 
+
+--------------------------------------------------------------------------------
+-- SUBSCRIPTIONS
+--------------------------------------------------------------------------------
 
 function EventCapture.subscribe(channel, fn)
 
@@ -260,6 +301,7 @@ function EventCapture.subscribe(channel, fn)
 
     table.insert(list, fn)
 
+    -- return unsubscribe handle
     return function()
         for i = #list, 1, -1 do
             if list[i] == fn then

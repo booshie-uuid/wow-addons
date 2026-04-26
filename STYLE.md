@@ -2,6 +2,146 @@
 
 Conventions for `.lua` files in this repository.
 
+## File Structure
+
+Large overloaded files should be avoided in favor of structured files that each relate to a specific set of responsibilities and expose a minimal, focused public surface via `addon`.
+
+While the decision to add a new file should be done thoughtfully, the cost of a new file is one `.toc` entry and a few lines of boilerplate. The cost of mixing concerns in one giant file is code that is hard to read, maintain, and is riddled with technical debt.
+
+### Decomposition
+
+Create a new file when any of the following is true:
+
+- **The code could plausibly be reused.** Even before a second consumer exists, code with the potential to be reused should go in its own file. Extract a reusable widget or capability the moment the design suggests a second consumer might exist. Pulling apart the code later when it already has multiple consumers will be far more expensive then one additional `.toc` entry.
+
+- **The code owns state that no one else should touch.** Lua's `local` scope is the strongest privacy boundary the language offers, and it is scoped to the file. State that holds invariants — caches, dedup tables, singleton settings — belongs as `local`s in its own file, where it is physically unreachable from the rest of the addon. All access then has to flow through a deliberate public API that enforces the contract you actually want to govern how the addon is used.
+
+- **Abstraction would minimise the impact of change.** If you can encapsulate a capability in a way that consumers of that capability can be isolated from changes in the underlying data, events, or API calls the capability is dependent on, your code will be significantly easier to maintain and you will be able to respond to changes faster.
+
+- **The file has grown too large to hold in your head.** If you can't keep a working model of a file in your head, the file is almost certainly doing too much. You don't need to be able to internalise what every line of code does or know exactly where it is within a file, but you should be able to develop a strong intuition based on a single read through of a file. A multi-thousand-line file with UI construction, refresh orchestration, event dispatch, and who knows whatelse is resistant to refactoring and hard to maintain because no one can hold all of it in mind at once.
+
+### Modules vs Classes
+
+The logic in most files should be encapsulated as either modules or classes.
+
+A **module** is exposed as a single shared instance (singleton). Other files access the shared instance via `addon.ModuleName`.
+
+Modules enable the strongest protections for internal state, but the trade-off is that there can only be one version of that state.
+
+```lua
+local addonName, addon = ...
+
+local EventCapture = {}
+addon.EventCapture = EventCapture
+
+
+-- registerDefaults if the module persists state
+addon.Core.registerDefaults("eventCapture", { ... })
+
+
+--------------------------------------------------------------------------------
+-- LOCAL CONSTANTS
+--------------------------------------------------------------------------------
+
+-- ...
+
+
+--------------------------------------------------------------------------------
+-- LOCAL STATE
+--------------------------------------------------------------------------------
+
+-- module-private tables and flags
+
+
+--------------------------------------------------------------------------------
+-- LOCAL FUNCTIONS
+--------------------------------------------------------------------------------
+
+-- private helpers, optionally split into themed subsections
+
+
+--------------------------------------------------------------------------------
+-- PUBLIC API
+--------------------------------------------------------------------------------
+
+function EventCapture.someThing() ... end
+
+
+--------------------------------------------------------------------------------
+-- WIRING
+--------------------------------------------------------------------------------
+
+-- event subscriptions, slash commands, anything that activates the module
+```
+
+A **class** exposes a constructor that allow other files to create instances via `Class.new(...)` and call methods that operate on a specific/dedicated instance of the class rather than a single shared instance.
+
+Classes are great for things like UI widgets where you may have multiple instances operating at the same time, each performing a similar function but with slightly different goals. The major downside of classes (in `lua`) is that they offer weaker protections for the state within the class, meaning that consumers of the class may modify or access the state in ways that you did not intend.
+
+```lua
+local addonName, addon = ...
+
+local ListPanel = {}
+ListPanel.__index = ListPanel
+addon.UI.ListPanel = ListPanel
+
+
+--------------------------------------------------------------------------------
+-- LOCAL CONSTANTS
+--------------------------------------------------------------------------------
+
+-- ...
+
+
+--------------------------------------------------------------------------------
+-- LOCAL FUNCTIONS
+--------------------------------------------------------------------------------
+
+-- file-local helpers (NOT methods on the class)
+-- either pure (state independent), or take an instance as the first argument
+
+
+--------------------------------------------------------------------------------
+-- CONSTRUCTOR
+--------------------------------------------------------------------------------
+
+function ListPanel.new(parent, opts)
+    local self = setmetatable({}, ListPanel)
+    -- ...
+    return self
+end
+
+
+--------------------------------------------------------------------------------
+-- PUBLIC METHODS
+--------------------------------------------------------------------------------
+
+function ListPanel:setItems(items) ... end
+```
+
+The standard top-to-bottom order is: boilerplate → constants → state → local functions → constructor → public API → wiring. Order *inside* a section is a readability decision — table-attached functions (`function Module.foo`, `function Class:bar`) have no load-time dependency on each other, so they can appear in whatever sequence is easiest to understand.
+
+Use sections and sub-section banners (see Comments) to help clarify the structure of the file and group common logic.
+
+### Naming and privacy
+
+| Kind | Shape | Example | Privacy |
+|---|---|---|---|
+| Module / class name | `PascalCase` | `EventCapture`, `ListPanel` | — |
+| Constants | `UPPER_SNAKE` | `ROW_HEIGHT`, `NOTIFY_INTERVAL` | file-local, enforced |
+| File-local function | `camelCase` | `local function notify()` | file-local, enforced |
+| File-local value | `camelCase` | `local hideOlder = false` | file-local, enforced |
+| Public function or method | `camelCase` | `EventCapture.exclude`, `panel:setItems` | exposed |
+| Class field | `self.field` | `self.frame` | no privacy |
+
+`PascalCase` is reserved for module and class names. Functions and values are always `camelCase`. The call site already distinguishes file-local from table-attached: an unqualified call (`notify(...)`) is file-local, a qualified call (`Module.foo(...)`) or method call (`obj:bar(...)`) is table-attached, so the case doesn't need to repeat that signal.
+
+Default to file-local for anything that isn't part of the public API — Lua's `local` scope is real, language-enforced privacy. If a piece of behaviour shouldn't be callable from outside the file, write it as a `local function` that takes the instance as its first argument, not as a class method. Don't rely on naming conventions to mark methods "private" — if it's on the class table, it's public.
+
+Use the metatable pattern (a class) only when more than one instance will exist. A singleton with `:method()` syntax is a module written as a class for no benefit.
+
+---
+
 ## Whitespace & Visual Layout
 
 We should organise our code logically into paragraphs that are visually separated from their neighbours, in the same way we organise our ideas in to paragraphs when writing. This allows the reader to easily identify related code/ideas without re-reading.
@@ -244,9 +384,9 @@ Section names should be CAPITLISED.
 ```lua
 
 
--- =============================================================================
+--------------------------------------------------------------------------------
 -- SECTION NAME
--- =============================================================================
+--------------------------------------------------------------------------------
 
 local function FirstThingInSection()
 ```
@@ -254,3 +394,18 @@ local function FirstThingInSection()
 The two blank lines above are the rule that distinguishes a section break from an ordinary declaration break. A reader scrolling the file sees the extra space before they see the banner itself.
 
 ---
+
+### Sub-Section Headers
+
+Sub-Sectiom headers should follow similar rules to section headers, but used to break up the code within a section in to logical groupings.
+
+Sub-Section headers should be a single line banners padded to exactly 80 columns. There should only be a single blank link about to banner.
+
+Sub-Section names should be CAPITLISED.
+
+```lua
+
+-- SUB-SECTION NAME ------------------------------------------------------------
+
+local function FirstThingInSubSection()
+```

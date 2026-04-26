@@ -6,6 +6,10 @@ local MainFrame = {}
 addon.UI.MainFrame = MainFrame
 
 
+--------------------------------------------------------------------------------
+-- LOCAL CONSTANTS
+--------------------------------------------------------------------------------
+
 local FRAME_WIDTH        = 820
 local FRAME_HEIGHT       = 480
 local HEADER_HEIGHT      = 26
@@ -20,11 +24,21 @@ local INFO_BOX_HEIGHT    = 80
 local INFO_TEXT = "Right Click an event in capture list to exclude.\n\nRight Click an event in exclude list to capture."
 
 
+--------------------------------------------------------------------------------
+-- LOCAL STATE
+--------------------------------------------------------------------------------
+
 local frame
 local startStopBtn
 
 
-local function SavePosition()
+--------------------------------------------------------------------------------
+-- LOCAL FUNCTIONS
+--------------------------------------------------------------------------------
+
+-- POSITION -------------------------------------------------------------------
+
+local function savePosition()
 
     if not frame then return end
 
@@ -35,7 +49,7 @@ local function SavePosition()
 
 end
 
-local function RestorePosition()
+local function restorePosition()
 
     local db = addon.Core.getDB()
     local p = db.point or addon.Core.getDefaults().point
@@ -45,8 +59,9 @@ local function RestorePosition()
 
 end
 
+-- HEADER ---------------------------------------------------------------------
 
-local function BuildHeader()
+local function buildHeader()
 
     local header = CreateFrame("Button", nil, frame)
     header:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
@@ -57,7 +72,7 @@ local function BuildHeader()
     header:SetScript("OnDragStart", function() frame:StartMoving() end)
     header:SetScript("OnDragStop", function()
         frame:StopMovingOrSizing()
-        SavePosition()
+        savePosition()
     end)
 
     local title = header:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -78,8 +93,9 @@ local function BuildHeader()
 
 end
 
+-- FOOTER ---------------------------------------------------------------------
 
-local function UpdateStartStopLabel()
+local function updateStartStopLabel()
 
     if not startStopBtn then return end
 
@@ -91,7 +107,7 @@ local function UpdateStartStopLabel()
 
 end
 
-local function BuildFooter()
+local function buildFooter()
 
     local footer = CreateFrame("Frame", nil, frame)
     footer:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
@@ -109,13 +125,14 @@ local function BuildFooter()
     startStopBtn:SetPoint("LEFT", footer, "LEFT", FRAME_PAD, 0)
     startStopBtn:SetScript("OnClick", function() addon.EventManager.toggle() end)
 
-    UpdateStartStopLabel()
-    addon.EventManager.subscribeToState(UpdateStartStopLabel)
+    updateStartStopLabel()
+    addon.EventManager.subscribeToState(updateStartStopLabel)
 
 end
 
+-- PANELS ---------------------------------------------------------------------
 
-local function BuildPanels()
+local function buildPanels()
 
     local content = CreateFrame("Frame", nil, frame)
     content:SetPoint("TOPLEFT", frame, "TOPLEFT", FRAME_PAD, -HEADER_HEIGHT - FRAME_PAD)
@@ -159,6 +176,10 @@ local function BuildPanels()
 end
 
 
+--------------------------------------------------------------------------------
+-- PUBLIC API
+--------------------------------------------------------------------------------
+
 function MainFrame.build()
 
     if frame then return end
@@ -172,14 +193,13 @@ function MainFrame.build()
     frame:Hide()
 
     addon.UI.Theme.applyFlatSkin(frame)
-    RestorePosition()
+    restorePosition()
 
-    BuildHeader()
-    BuildFooter()
-    BuildPanels()
+    buildHeader()
+    buildFooter()
+    buildPanels()
 
 end
-
 
 function MainFrame.show()
 

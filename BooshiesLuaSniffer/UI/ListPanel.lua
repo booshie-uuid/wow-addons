@@ -7,6 +7,10 @@ ListPanel.__index = ListPanel
 addon.UI.ListPanel = ListPanel
 
 
+--------------------------------------------------------------------------------
+-- LOCAL CONSTANTS
+--------------------------------------------------------------------------------
+
 local ROW_HEIGHT          = 18
 local TITLE_HEIGHT        = 22
 local HEADER_ROW_HEIGHT   = 18
@@ -17,7 +21,13 @@ local PADDING_X           = 4
 local SOFT_REFRESH_PERIOD = 1.0
 
 
-local function HasHeader(cols)
+--------------------------------------------------------------------------------
+-- LOCAL FUNCTIONS
+--------------------------------------------------------------------------------
+
+-- COLUMN LAYOUT --------------------------------------------------------------
+
+local function hasHeader(cols)
 
     for i = 1, #cols do
         if cols[i].header then return true end
@@ -27,7 +37,7 @@ local function HasHeader(cols)
 
 end
 
-local function ResolveColumnWidths(cols, available)
+local function resolveColumnWidths(cols, available)
 
     local fixed = 0
     local stretchCount = 0
@@ -58,7 +68,7 @@ local function ResolveColumnWidths(cols, available)
 
 end
 
-local function LayoutCells(cells, cols, widths, parent)
+local function layoutCells(cells, cols, widths, parent)
 
     local x = PADDING_X
 
@@ -73,8 +83,9 @@ local function LayoutCells(cells, cols, widths, parent)
 
 end
 
+-- WIDGET BUILDERS ------------------------------------------------------------
 
-local function BuildHeaderRow(panel, parent)
+local function buildHeaderRow(panel, parent)
 
     local header = CreateFrame("Frame", nil, parent)
     header:SetHeight(HEADER_ROW_HEIGHT)
@@ -103,7 +114,7 @@ local function BuildHeaderRow(panel, parent)
 
 end
 
-local function BuildRow(panel)
+local function buildRow(panel)
 
     local row = CreateFrame("Button", nil, panel.content)
     row:SetHeight(ROW_HEIGHT)
@@ -143,6 +154,54 @@ local function BuildRow(panel)
 
 end
 
+-- RENDERING ------------------------------------------------------------------
+
+local function acquireRow(panel, index)
+
+    local row = panel.rows[index]
+    if row then return row end
+
+    row = buildRow(panel)
+    panel.rows[index] = row
+
+    return row
+
+end
+
+local function layoutRow(panel, row, index)
+
+    row:ClearAllPoints()
+    row:SetPoint("TOPLEFT", panel.content, "TOPLEFT", 0, -(index - 1) * ROW_HEIGHT)
+    row:SetPoint("RIGHT", panel.content, "RIGHT", 0, 0)
+
+end
+
+local function writeRow(panel, row, item)
+
+    for i = 1, #panel.columns do
+        local col = panel.columns[i]
+        local v = item[col.key]
+        local text = col.format and col.format(v, item) or tostring(v or "")
+        row.cells[i]:SetText(text)
+    end
+
+end
+
+local function softRefresh(panel)
+
+    for i = 1, #panel.items do
+        local row = panel.rows[i]
+        if row and row:IsShown() and row.item then
+            writeRow(panel, row, row.item)
+        end
+    end
+
+end
+
+
+--------------------------------------------------------------------------------
+-- CONSTRUCTOR
+--------------------------------------------------------------------------------
 
 function ListPanel.new(parent, opts)
 
@@ -168,8 +227,8 @@ function ListPanel.new(parent, opts)
 
     local scrollTop = TITLE_HEIGHT + TITLE_PAD_BELOW
 
-    if HasHeader(self.columns) then
-        local header = BuildHeaderRow(self, frame)
+    if hasHeader(self.columns) then
+        local header = buildHeaderRow(self, frame)
         header:SetPoint("TOPLEFT", frame, "TOPLEFT", 6, -scrollTop)
         header:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -26, -scrollTop)
         self.header = header
@@ -213,7 +272,7 @@ function ListPanel.new(parent, opts)
         if elapsed < SOFT_REFRESH_PERIOD then return end
 
         elapsed = 0
-        self:_softRefresh()
+        softRefresh(self)
 
     end)
 
@@ -221,6 +280,10 @@ function ListPanel.new(parent, opts)
 
 end
 
+
+--------------------------------------------------------------------------------
+-- PUBLIC METHODS
+--------------------------------------------------------------------------------
 
 function ListPanel:setAnchors(...)
 
@@ -233,54 +296,9 @@ function ListPanel:setAnchors(...)
 
 end
 
-
 function ListPanel:getTableRightAnchor()
     return self.header or self.scroll
 end
-
-
-function ListPanel:_acquireRow(index)
-
-    local row = self.rows[index]
-    if row then return row end
-
-    row = BuildRow(self)
-    self.rows[index] = row
-
-    return row
-
-end
-
-function ListPanel:_layoutRow(row, index)
-
-    row:ClearAllPoints()
-    row:SetPoint("TOPLEFT", self.content, "TOPLEFT", 0, -(index - 1) * ROW_HEIGHT)
-    row:SetPoint("RIGHT", self.content, "RIGHT", 0, 0)
-
-end
-
-function ListPanel:_writeRow(row, item)
-
-    for i = 1, #self.columns do
-        local col = self.columns[i]
-        local v = item[col.key]
-        local text = col.format and col.format(v, item) or tostring(v or "")
-        row.cells[i]:SetText(text)
-    end
-
-end
-
-function ListPanel:_softRefresh()
-
-    for i = 1, #self.items do
-        local row = self.rows[i]
-        if row and row:IsShown() and row.item then
-            self:_writeRow(row, row.item)
-        end
-    end
-
-end
-
 
 function ListPanel:setItems(items)
 
@@ -298,21 +316,21 @@ function ListPanel:rebuild()
     local contentWidth = self.scroll:GetWidth() or 1
     self.content:SetSize(contentWidth, math.max(1, count * ROW_HEIGHT))
 
-    local widths = ResolveColumnWidths(self.columns, contentWidth - PADDING_X * 2)
+    local widths = resolveColumnWidths(self.columns, contentWidth - PADDING_X * 2)
 
     if self.header then
-        LayoutCells(self.header.cells, self.columns, widths, self.header)
+        layoutCells(self.header.cells, self.columns, widths, self.header)
     end
 
     for i = 1, count do
-        local row = self:_acquireRow(i)
+        local row = acquireRow(self, i)
         local item = items[i]
 
         row.item = item
-        self:_writeRow(row, item)
-        LayoutCells(row.cells, self.columns, widths, row)
+        writeRow(self, row, item)
+        layoutCells(row.cells, self.columns, widths, row)
 
-        self:_layoutRow(row, i)
+        layoutRow(self, row, i)
         row:Show()
     end
 

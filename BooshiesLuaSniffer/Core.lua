@@ -6,12 +6,53 @@ local Core = {}
 addon.Core = Core
 
 
+--------------------------------------------------------------------------------
+-- LOCAL CONSTANTS
+--------------------------------------------------------------------------------
+
 local DEFAULTS = {
     point = { "CENTER", "UIParent", "CENTER", 0, 0 },
 }
 
+
+--------------------------------------------------------------------------------
+-- LOCAL STATE
+--------------------------------------------------------------------------------
+
 local registry = {}
 
+
+--------------------------------------------------------------------------------
+-- LOCAL FUNCTIONS
+--------------------------------------------------------------------------------
+
+local function mergeInto(target, defaults)
+
+    for k, v in pairs(defaults) do
+        if target[k] == nil then
+            target[k] = v
+        end
+    end
+
+end
+
+local function mergeDefaults()
+
+    BooshiesLuaSnifferDB = BooshiesLuaSnifferDB or {}
+
+    mergeInto(BooshiesLuaSnifferDB, DEFAULTS)
+
+    for namespace, defaults in pairs(registry) do
+        BooshiesLuaSnifferDB[namespace] = BooshiesLuaSnifferDB[namespace] or {}
+        mergeInto(BooshiesLuaSnifferDB[namespace], defaults)
+    end
+
+end
+
+
+--------------------------------------------------------------------------------
+-- PUBLIC API
+--------------------------------------------------------------------------------
 
 function Core.registerDefaults(namespace, defaults)
     registry[namespace] = defaults
@@ -30,29 +71,9 @@ function Core.getDefaults()
 end
 
 
-local function MergeInto(target, defaults)
-
-    for k, v in pairs(defaults) do
-        if target[k] == nil then
-            target[k] = v
-        end
-    end
-
-end
-
-local function MergeDefaults()
-
-    BooshiesLuaSnifferDB = BooshiesLuaSnifferDB or {}
-
-    MergeInto(BooshiesLuaSnifferDB, DEFAULTS)
-
-    for namespace, defaults in pairs(registry) do
-        BooshiesLuaSnifferDB[namespace] = BooshiesLuaSnifferDB[namespace] or {}
-        MergeInto(BooshiesLuaSnifferDB[namespace], defaults)
-    end
-
-end
-
+--------------------------------------------------------------------------------
+-- INITIALIZATION
+--------------------------------------------------------------------------------
 
 local loader = CreateFrame("Frame")
 loader:RegisterEvent("ADDON_LOADED")
@@ -62,7 +83,7 @@ loader:SetScript("OnEvent", function(self, event, name)
         return
     end
 
-    MergeDefaults()
+    mergeDefaults()
     addon.EventCapture.init()
     addon.UI.MainFrame.build()
 
@@ -71,7 +92,11 @@ loader:SetScript("OnEvent", function(self, event, name)
 end)
 
 
-local function Print(msg)
+--------------------------------------------------------------------------------
+-- SLASH COMMAND
+--------------------------------------------------------------------------------
+
+local function log(msg)
     print("|cff4fc3f7BLS:|r " .. msg)
 end
 
@@ -85,15 +110,15 @@ SlashCmdList["BOOSHIESLUASNIFFER"] = function(msg)
         addon.UI.MainFrame.toggle()
     elseif msg == "start" then
         addon.EventManager.start()
-        Print("capture started")
+        log("capture started")
     elseif msg == "stop" then
         addon.EventManager.stop()
-        Print("capture stopped")
+        log("capture stopped")
     elseif msg == "clear" then
         addon.EventCapture.clearExclusions()
-        Print("exclusions cleared")
+        log("exclusions cleared")
     else
-        Print("/sniff [toggle|start|stop|clear]")
+        log("/sniff [toggle|start|stop|clear]")
     end
 
 end
