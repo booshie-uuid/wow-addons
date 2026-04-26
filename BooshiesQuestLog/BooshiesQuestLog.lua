@@ -33,16 +33,9 @@ local BAR_HEIGHT = 3
 local BAR_BOTTOM_PAD = 3
 local TOP_CLUSTER_Y = 3   -- vertical offset for arrow + track + completion icon
 
--- Frame Chrome
-local HEADER_OFFSET = 46
-local BOTTOM_PAD = 16
-
--- Resize Limits
-local MIN_MAX_HEIGHT = 150
-local MAX_RESIZE_HEIGHT = 2000
-local DEFAULT_MAX_HEIGHT = 500
-
--- Frame References (assigned in BuildUI)
+-- TrackerWindow instance plus convenience aliases for its child frames.
+-- Assigned in BuildUI; the rest of the file reads them as if they were locals.
+local window
 local frame, titleText, zoneText, content, scrollFrame, settingsFrame
 
 -- Forward declarations - earlier-defined functions close over these and
@@ -66,44 +59,6 @@ local SCROLL_PIN_WINDOW = 0.3
 local previousTrackedKeys
 local pendingFlashKeys = {}
 local FLASH_DURATION = 0.8
-
-
---------------------------------------------------------------------------------
--- FRAME POSITION
---------------------------------------------------------------------------------
-
-local function SavePosition()
-
-    if not frame then return end
-
-    local right = frame:GetRight()
-    local top = frame:GetTop()
-    if not right or not top then return end
-
-    local parent = UIParent
-    local uiRight = parent:GetRight() or 0
-    local uiTop = parent:GetTop() or 0
-
-    local x = right - uiRight
-    local y = top - uiTop
-
-    addon.Core.getDB().point = { "TOPRIGHT", "UIParent", "TOPRIGHT", x, y }
-
-    frame:ClearAllPoints()
-    frame:SetPoint("TOPRIGHT", parent, "TOPRIGHT", x, y)
-
-end
-
-local function RestorePosition()
-
-    frame:ClearAllPoints()
-
-    local p = addon.Core.getDB().point or addon.Core.getDefaults().point
-    local rel = _G[p[2]] or UIParent
-
-    frame:SetPoint(p[1], rel, p[3], p[4], p[5])
-
-end
 
 
 --------------------------------------------------------------------------------
@@ -150,10 +105,10 @@ local function RelayoutLayout(layout)
     content:SetHeight(contentHeight)
 
     local maxH = addon.Core.getDB().maxHeight or 300
-    local finalHeight = math.max(maxH, MIN_MAX_HEIGHT)
+    local finalHeight = math.max(maxH, window.minMaxHeight)
     frame:SetHeight(finalHeight)
 
-    local viewport = finalHeight - HEADER_OFFSET - BOTTOM_PAD
+    local viewport = finalHeight - window.headerOffset - window.bottomPad
     local bar = scrollFrame.ScrollBar or _G["BooshiesQuestLogScrollScrollBar"]
     local barVisible = false
 
@@ -163,11 +118,11 @@ local function RelayoutLayout(layout)
         if barVisible then
             scrollFrame._bqlForceHidden = false
             bar:Show()
-            scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -26, BOTTOM_PAD)
+            scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -26, window.bottomPad)
         else
             scrollFrame._bqlForceHidden = true
             bar:Hide()
-            scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -8, BOTTOM_PAD)
+            scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -8, window.bottomPad)
             if scrollFrame.SetVerticalScroll then scrollFrame:SetVerticalScroll(0) end
         end
     end
@@ -1499,7 +1454,7 @@ local function BuildSettingsUI()
     settingsFrame.pending = {}
     settingsFrame.rows = {}
 
-    local y = HEADER_OFFSET
+    local y = window.headerOffset
     for i, spec in ipairs(SETTINGS_SPEC) do
         local row = CreateFrame("Frame", nil, settingsFrame)
         row:SetPoint("TOPLEFT", settingsFrame, "TOPLEFT", 10, -y)
@@ -1746,228 +1701,56 @@ end
 -- MAIN UI CONSTRUCTION
 --------------------------------------------------------------------------------
 
-local function BuildMainFrame()
-
-    frame = CreateFrame("Frame", "BooshiesQuestLogFrame", UIParent)
-    frame:SetSize(addon.Core.getDB().width or 280, 200)
-    frame:SetFrameStrata("MEDIUM")
-    frame:SetMovable(true)
-    frame:EnableMouse(true)
-    frame:SetClampedToScreen(true)
-
-    addon.UI.Theme.applyFlatSkin(frame)
-
-end
-
-local function BuildHeader()
-
-    local header = CreateFrame("Button", nil, frame)
-    header:SetPoint("TOPLEFT", frame, "TOPLEFT", 4, -4)
-    header:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -4, -4)
-    header:SetHeight(30)
-    header:RegisterForDrag("LeftButton")
-    header:SetScript("OnDragStart", function()
-        if not addon.Core.getDB().lockPosition then frame:StartMoving() end
-    end)
-    header:SetScript("OnDragStop", function()
-        frame:StopMovingOrSizing()
-        SavePosition()
-    end)
-    frame.header = header
-
-    titleText = header:CreateFontString(nil, "OVERLAY", "GameFontNormalMed1")
-    titleText:SetPoint("LEFT", header, "TOPLEFT", 4, -11)
-    titleText:SetJustifyH("LEFT")
-    titleText:SetText("Quests")
-
-    local titleBtn = CreateFrame("Button", nil, header)
-    titleBtn:SetAllPoints(titleText)
-    titleBtn:SetHitRectInsets(-3, -3, -2, -2)
-    titleBtn:SetFrameLevel(header:GetFrameLevel() + 2)
-    titleBtn:RegisterForClicks("LeftButtonUp")
-    titleBtn:RegisterForDrag("LeftButton")
-    titleBtn:SetScript("OnDragStart", function()
-        if not addon.Core.getDB().lockPosition then frame:StartMoving() end
-    end)
-    titleBtn:SetScript("OnDragStop", function()
-        frame:StopMovingOrSizing()
-        SavePosition()
-    end)
-    titleBtn:SetScript("OnClick", function()
-        addon.Core.getDB().collapsed = not addon.Core.getDB().collapsed
-        Refresh()
-    end)
-    frame.titleBtn = titleBtn
-
-    zoneText = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    zoneText:SetPoint("TOPLEFT", titleText, "BOTTOMLEFT", 0, -2)
-    zoneText:SetJustifyH("LEFT")
-    zoneText:SetTextColor(unpack(addon.UI.Theme.colors.zoneText))
-
-end
-
-local function BuildHeaderButtons()
-
-    local header = frame.header
-
-    local cogBtn = CreateFrame("Button", nil, header)
-    cogBtn:SetSize(16, 16)
-    cogBtn:SetPoint("RIGHT", header, "TOPRIGHT", 0, -11)
-    cogBtn:SetNormalTexture(addon.UI.Theme.textures.cog)
-
-    local cogHover = cogBtn:CreateTexture(nil, "HIGHLIGHT")
-    cogHover:SetAllPoints(cogBtn)
-    cogHover:SetColorTexture(unpack(addon.UI.Theme.colors.cogHover))
-
-    cogBtn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:AddLine("Settings")
-        GameTooltip:Show()
-    end)
-    cogBtn:SetScript("OnLeave", GameTooltip_Hide)
-    cogBtn:SetScript("OnClick", function() ShowSettings() end)
-    frame.cogBtn = cogBtn
-
-    local filterBtn = CreateFrame("CheckButton", "BooshiesQuestLogFilterToggle", header, "UICheckButtonTemplate")
-    filterBtn:SetSize(18, 18)
-    filterBtn:SetPoint("RIGHT", cogBtn, "LEFT", -6, 0)
-    filterBtn:SetChecked(addon.Core.getDB().filterByZone)
-    filterBtn:SetHitRectInsets(-3, -3, -3, -3)
-
-    local filterLabel = filterBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    filterLabel:SetPoint("RIGHT", filterBtn, "LEFT", -2, 0)
-    filterLabel:SetText("Zone")
-
-    filterBtn:SetScript("OnClick", function(self)
-        addon.Core.getDB().filterByZone = self:GetChecked()
-        Refresh()
-    end)
-    filterBtn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:AddLine("Zone Filter")
-        GameTooltip:AddLine(self:GetChecked()
-            and "Showing only quests in your current zone."
-            or "Showing all quests in your log.", 1, 1, 1, true)
-        GameTooltip:Show()
-    end)
-    filterBtn:SetScript("OnLeave", GameTooltip_Hide)
-    frame.filterBtn = filterBtn
-
-    local collapseAllBtn = CreateFrame("Button", nil, frame)
-    local collapseAllText = collapseAllBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    collapseAllText:SetPoint("RIGHT", collapseAllBtn, "RIGHT", 0, 0)
-    collapseAllText:SetText("collapse all")
-    collapseAllText:SetTextColor(unpack(addon.UI.Theme.colors.collapseAllText))
-
-    collapseAllBtn:SetSize((collapseAllText:GetStringWidth() or 60) + 4, 14)
-    collapseAllBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -8, -22)
-    collapseAllBtn:SetFrameLevel((header:GetFrameLevel() or frame:GetFrameLevel()) + 5)
-    collapseAllBtn:SetHitRectInsets(-3, -3, -3, -3)
-
-    collapseAllBtn:SetScript("OnEnter", function() collapseAllText:SetTextColor(unpack(addon.UI.Theme.colors.collapseAllHover)) end)
-    collapseAllBtn:SetScript("OnLeave", function() collapseAllText:SetTextColor(unpack(addon.UI.Theme.colors.collapseAllText)) end)
-    collapseAllBtn:SetScript("OnClick", function()
-        addon.Core.getDB().expandedKeys = {}
-        addon.Core.getDB().collapsedSections = addon.Core.getDB().collapsedSections or {}
-        for _, cls in ipairs(CLASSIFICATION_ORDER) do
-            addon.Core.getDB().collapsedSections[cls] = true
-        end
-        for _, k in ipairs({ "achievements", "recipes", "activities", "initiatives" }) do
-            addon.Core.getDB().collapsedSections[k] = true
-        end
-        Refresh()
-    end)
-    frame.collapseAllBtn = collapseAllBtn
-
-end
-
-local function BuildScrollArea()
-
-    scrollFrame = CreateFrame("ScrollFrame", "BooshiesQuestLogScroll", frame, "UIPanelScrollFrameTemplate")
-    scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 8, -HEADER_OFFSET)
-    scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -8, BOTTOM_PAD)
-
-    content = CreateFrame("Frame", nil, scrollFrame)
-    content:SetSize((addon.Core.getDB().width or 280) - 40, 1)
-    scrollFrame:SetScrollChild(content)
-
-    local bar = scrollFrame.ScrollBar or _G["BooshiesQuestLogScrollScrollBar"]
-    if bar then
-        bar:HookScript("OnShow", function(self)
-            if scrollFrame._bqlForceHidden then self:Hide() end
-        end)
-        if bar.SetValueStep then bar:SetValueStep(ROW_HEIGHT) end
-        if bar.SetStepsPerPage then bar:SetStepsPerPage(4) end
-    end
-
-    scrollFrame:EnableMouseWheel(true)
-    scrollFrame:SetScript("OnMouseWheel", function(self, delta)
-        local cur = self:GetVerticalScroll() or 0
-        local max = self:GetVerticalScrollRange() or 0
-        local step = ROW_HEIGHT
-        local new = cur - delta * step
-        if new < 0 then new = 0 elseif new > max then new = max end
-        self:SetVerticalScroll(new)
-    end)
-
-end
-
-local function BuildResizer()
-
-    local resizer = CreateFrame("Button", nil, frame)
-    resizer:SetSize(44, 6)
-    resizer:SetPoint("BOTTOM", frame, "BOTTOM", 0, 4)
-    resizer:SetFrameLevel(frame:GetFrameLevel() + 10)
-    resizer:RegisterForClicks("LeftButtonDown", "LeftButtonUp")
-
-    local grip = resizer:CreateTexture(nil, "OVERLAY")
-    grip:SetAllPoints(resizer)
-    grip:SetColorTexture(unpack(addon.UI.Theme.colors.resizeGrip))
-
-    local gripHover = resizer:CreateTexture(nil, "HIGHLIGHT")
-    gripHover:SetAllPoints(resizer)
-    gripHover:SetColorTexture(unpack(addon.UI.Theme.colors.resizeGripHover))
-
-    local function dragUpdate(self)
-        local cur = select(2, GetCursorPosition()) / UIParent:GetEffectiveScale()
-        local delta = self._dragStartY - cur
-        local newMax = math.floor(self._dragStartMax + delta + 0.5)
-        if newMax < MIN_MAX_HEIGHT then newMax = MIN_MAX_HEIGHT end
-        if newMax > MAX_RESIZE_HEIGHT then newMax = MAX_RESIZE_HEIGHT end
-        if newMax ~= addon.Core.getDB().maxHeight then
-            addon.Core.getDB().maxHeight = newMax
-            Refresh()
-        end
-    end
-
-    resizer:SetScript("OnMouseDown", function(self, button)
-        if button ~= "LeftButton" then return end
-        self._dragStartY = select(2, GetCursorPosition()) / UIParent:GetEffectiveScale()
-        self._dragStartMax = addon.Core.getDB().maxHeight or DEFAULT_MAX_HEIGHT
-        self:SetScript("OnUpdate", dragUpdate)
-    end)
-
-    resizer:SetScript("OnMouseUp", function(self)
-        self._dragStartY = nil
-        self:SetScript("OnUpdate", nil)
-    end)
-
-    frame.resizer = resizer
-
-end
-
 local function BuildUI()
 
     if frame then return end
 
-    BuildMainFrame()
-    BuildHeader()
-    BuildHeaderButtons()
-    BuildScrollArea()
-    BuildResizer()
+    window = addon.UI.TrackerWindow.new({
+        name            = "BooshiesQuestLogFrame",
+        title           = "Quests",
+        width           = addon.Core.getDB().width,
+        loadPosition    = function() return addon.Core.getDB().point end,
+        savePosition    = function(p) addon.Core.getDB().point = p end,
+        defaultPosition = addon.Core.getDefaults().point,
+        isLocked        = function() return addon.Core.getDB().lockPosition end,
+        getMaxHeight    = function() return addon.Core.getDB().maxHeight end,
+        isZoneFilterChecked = function() return addon.Core.getDB().filterByZone end,
 
-    RestorePosition()
-    SavePosition()
+        onTitleClick = function()
+            addon.Core.getDB().collapsed = not addon.Core.getDB().collapsed
+            Refresh()
+        end,
+
+        onSettings = function() ShowSettings() end,
+
+        onZoneFilterChange = function(checked)
+            addon.Core.getDB().filterByZone = checked
+            Refresh()
+        end,
+
+        onCollapseAll = function()
+            addon.Core.getDB().expandedKeys = {}
+            addon.Core.getDB().collapsedSections = addon.Core.getDB().collapsedSections or {}
+            for _, cls in ipairs(CLASSIFICATION_ORDER) do
+                addon.Core.getDB().collapsedSections[cls] = true
+            end
+            for _, k in ipairs({ "achievements", "recipes", "activities", "initiatives" }) do
+                addon.Core.getDB().collapsedSections[k] = true
+            end
+            Refresh()
+        end,
+
+        onResize = function(newMax)
+            addon.Core.getDB().maxHeight = newMax
+            Refresh()
+        end,
+    })
+
+    frame       = window.frame
+    titleText   = window.titleText
+    zoneText    = window.zoneText
+    content     = window.content
+    scrollFrame = window.scrollFrame
 
 end
 
@@ -2116,7 +1899,7 @@ SlashCmdList["BOOSHIESQUESTLOG"] = function(msg)
         addon.Core.getDB().point = addon.Core.getDefaults().point
         addon.Core.getDB().maxHeight = addon.Core.getDefaults().maxHeight
         addon.Core.getDB().helpShown = false
-        RestorePosition()
+        if window then window:restorePosition() end
         Refresh()
         ShowHelp()
         print("|cff4fc3f7BQL:|r position + height reset")
