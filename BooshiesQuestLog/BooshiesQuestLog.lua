@@ -33,7 +33,7 @@ local ROW_GAP    = addon.UI.TrackerEntry.ROW_GAP
 -- TrackerWindow instance plus convenience aliases for its child frames.
 -- Assigned in BuildUI; the rest of the file reads them as if they were locals.
 local window
-local frame, titleText, zoneText, content, scrollFrame, settingsFrame
+local frame, titleText, zoneText, content, scrollFrame
 
 -- Forward declaration - earlier-defined functions close over Refresh and
 -- resolve it at call time, so the actual value can be assigned later.
@@ -568,7 +568,7 @@ local function RefreshUI()
 
     if not frame then return end
     if not addon.Core.getDB().enabled then frame:Hide(); return end
-    if settingsFrame and settingsFrame:IsShown() then return end
+    if addon.UI.SettingsWindow.isShown() then return end
 
     frame:Show()
 
@@ -612,202 +612,6 @@ Refresh = function() addon.Util.safeCall("Refresh", RefreshUI) end
 
 
 --------------------------------------------------------------------------------
--- SETTINGS UI
---------------------------------------------------------------------------------
-
-local SETTINGS_SPEC = {
-    { key = "filterByZone",           label = "Filter Quests by Current Zone" },
-    { key = "alwaysShowCampaign",     label = "Always Show Campaign Quests" },
-    { key = "alwaysShowAchievements", label = "Always Show Achievements" },
-    { key = "hideBlizzardTracker",    label = "Hide Blizzard Activity Tracker" },
-    { key = "lockPosition",           label = "Lock Position" },
-    { key = "hideBorder",             label = "Hide Outer Border" },
-    { key = "backdropAlpha",          label = "Background Opacity",
-                                      type = "slider", min = 0, max = 1, step = 0.05 },
-    { key = "debug",                  label = "Debug Mode" },
-}
-
-local function BuildSettingsUI()
-
-    if settingsFrame then return end
-
-    settingsFrame = CreateFrame("Frame", "BooshiesQuestLogSettingsFrame", UIParent)
-    settingsFrame:SetFrameStrata("MEDIUM")
-    settingsFrame:SetMovable(true)
-    settingsFrame:EnableMouse(true)
-    settingsFrame:SetClampedToScreen(true)
-    settingsFrame:Hide()
-    addon.UI.Theme.applyFlatSkin(settingsFrame)
-
-    local title = settingsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalMed1")
-    title:SetPoint("LEFT", settingsFrame, "TOPLEFT", 8, -19)
-    title:SetText("Settings")
-
-    settingsFrame.pending = {}
-    settingsFrame.rows = {}
-
-    local y = window.headerOffset
-    for i, spec in ipairs(SETTINGS_SPEC) do
-        local row = CreateFrame("Frame", nil, settingsFrame)
-        row:SetPoint("TOPLEFT", settingsFrame, "TOPLEFT", 10, -y)
-        row:SetPoint("TOPRIGHT", settingsFrame, "TOPRIGHT", -10, -y)
-        row.key = spec.key
-
-        if spec.type == "slider" then
-            row:SetHeight(40)
-
-            local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            label:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
-            label:SetText(spec.label)
-
-            local valueText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            valueText:SetPoint("TOPRIGHT", row, "TOPRIGHT", 0, 0)
-
-            local slider = CreateFrame("Slider", nil, row, "OptionsSliderTemplate")
-            slider:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 0, -4)
-            slider:SetPoint("RIGHT", row, "RIGHT", 0, 0)
-            slider:SetMinMaxValues(spec.min, spec.max)
-            slider:SetValueStep(spec.step)
-            slider:SetObeyStepOnDrag(true)
-
-            -- Hide the template's built-in Low/High/Text labels so the row
-            -- can use a single right-aligned percentage display instead.
-            if slider.Low  then slider.Low:Hide()  end
-            if slider.High then slider.High:Hide() end
-            if slider.Text then slider.Text:Hide() end
-
-            local function updateValueText(v)
-                valueText:SetText(string.format("%d%%", math.floor((v or 0) * 100 + 0.5)))
-            end
-
-            slider:SetScript("OnValueChanged", function(self, value)
-                settingsFrame.pending[spec.key] = value
-                updateValueText(value)
-            end)
-
-            row.slider = slider
-            function row:setValue(v)
-                self.slider:SetValue(v or 0)
-                updateValueText(v)
-            end
-
-            y = y + 44
-
-        else
-            row:SetHeight(22)
-
-            local cb = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
-            cb:SetSize(20, 20)
-            cb:SetPoint("LEFT", row, "LEFT", 0, 0)
-            cb:SetScript("OnClick", function(self)
-                settingsFrame.pending[spec.key] = self:GetChecked() and true or false
-            end)
-
-            local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            label:SetPoint("LEFT", cb, "RIGHT", 4, 0)
-            label:SetPoint("RIGHT", row, "RIGHT", 0, 0)
-            label:SetJustifyH("LEFT")
-            label:SetWordWrap(true)
-            label:SetText(spec.label)
-
-            row.checkbox = cb
-            function row:setValue(v)
-                self.checkbox:SetChecked(v and true or false)
-            end
-
-            y = y + 24
-        end
-
-        settingsFrame.rows[i] = row
-    end
-
-    local backBtn = CreateFrame("Button", nil, settingsFrame, "UIPanelButtonTemplate")
-    backBtn:SetSize(70, 22)
-    backBtn:SetPoint("BOTTOMLEFT", settingsFrame, "BOTTOMLEFT", 10, 10)
-    backBtn:SetText("Back")
-    backBtn:SetScript("OnClick", function() HideSettings() end)
-
-    local helpBtn = CreateFrame("Button", nil, settingsFrame, "UIPanelButtonTemplate")
-    helpBtn:SetSize(70, 22)
-    helpBtn:SetPoint("BOTTOM", settingsFrame, "BOTTOM", 0, 10)
-    helpBtn:SetText("Help")
-    helpBtn:SetScript("OnClick", function() addon.UI.HelpWindow.show() end)
-
-    local applyBtn = CreateFrame("Button", nil, settingsFrame, "UIPanelButtonTemplate")
-    applyBtn:SetSize(70, 22)
-    applyBtn:SetPoint("BOTTOMRIGHT", settingsFrame, "BOTTOMRIGHT", -10, 10)
-    applyBtn:SetText("Apply")
-    applyBtn:SetScript("OnClick", function() ApplySettings() end)
-
-    settingsFrame.backBtn = backBtn
-    settingsFrame.helpBtn = helpBtn
-    settingsFrame.applyBtn = applyBtn
-
-    -- y is the bottom of the last row; +44 reserves space for the bottom button row.
-    settingsFrame:SetSize(addon.Core.getDB().width or 280, y + 44)
-
-end
-
-function ShowSettings()
-
-    BuildSettingsUI()
-    if not frame then return end
-
-    local right = frame:GetRight()
-    local top = frame:GetTop()
-
-    if right and top then
-        local uiRight = UIParent:GetRight() or 0
-        local uiTop = UIParent:GetTop() or 0
-        settingsFrame:ClearAllPoints()
-        settingsFrame:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", right - uiRight, top - uiTop)
-    end
-
-    settingsFrame:SetWidth(frame:GetWidth())
-
-    for _, row in ipairs(settingsFrame.rows) do
-        row:setValue(addon.Core.getDB()[row.key])
-    end
-
-    wipe(settingsFrame.pending)
-    frame:Hide()
-    settingsFrame:Show()
-
-end
-
-function HideSettings()
-
-    if settingsFrame then settingsFrame:Hide() end
-    if frame then frame:Show() end
-    if Refresh then Refresh() end
-
-end
-
-function ApplySettings()
-
-    if not settingsFrame then
-        HideSettings()
-        return
-    end
-
-    for key, val in pairs(settingsFrame.pending) do
-        addon.Core.getDB()[key] = val
-    end
-    wipe(settingsFrame.pending)
-
-    if frame and frame.filterBtn then
-        frame.filterBtn:SetChecked(addon.Core.getDB().filterByZone)
-    end
-
-    addon.BlizzardTracker.applyState()
-    addon.UI.Theme.applyAppearance()
-    HideSettings()
-    Refresh()
-
-end
-
-
---------------------------------------------------------------------------------
 -- MAIN UI CONSTRUCTION
 --------------------------------------------------------------------------------
 
@@ -831,7 +635,7 @@ local function BuildUI()
             Refresh()
         end,
 
-        onSettings = function() ShowSettings() end,
+        onSettings = function() addon.UI.SettingsWindow.show() end,
 
         onZoneFilterChange = function(checked)
             addon.Core.getDB().filterByZone = checked
@@ -871,6 +675,11 @@ local function BuildUI()
     addon.UI.TrackerSection.init({
         content = content,
         onClick = onSectionClick,
+    })
+
+    addon.UI.SettingsWindow.init({
+        getTrackerFrame = function() return frame end,
+        onApply         = function() Refresh() end,
     })
 
 end
