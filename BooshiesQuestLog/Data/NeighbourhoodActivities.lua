@@ -7,6 +7,13 @@ addon.Data.NeighbourhoodActivities = NeighbourhoodActivities
 
 
 --------------------------------------------------------------------------------
+-- LOCAL CONSTANTS
+--------------------------------------------------------------------------------
+
+local SECTION = "Endeavours"
+
+
+--------------------------------------------------------------------------------
 -- LOCAL FUNCTIONS
 --------------------------------------------------------------------------------
 
@@ -27,12 +34,7 @@ local function taskID(t)
     return t and (t.id or t.taskID or t.ID or t.initiativeTaskID)
 end
 
-
---------------------------------------------------------------------------------
--- PUBLIC API
---------------------------------------------------------------------------------
-
-function NeighbourhoodActivities.getTracked()
+local function getTrackedIDs()
 
     local list = {}
     if not C_NeighborhoodInitiative then return list end
@@ -58,7 +60,7 @@ function NeighbourhoodActivities.getTracked()
 
 end
 
-function NeighbourhoodActivities.getInfo(id)
+local function getInfo(id)
 
     if not C_NeighborhoodInitiative then return nil end
 
@@ -79,9 +81,8 @@ function NeighbourhoodActivities.getInfo(id)
 
 end
 
-function NeighbourhoodActivities.getObjectives(id)
+local function getObjectives(info)
 
-    local info = NeighbourhoodActivities.getInfo(id)
     if not info then return {} end
 
     local list = {}
@@ -130,21 +131,72 @@ function NeighbourhoodActivities.getObjectives(id)
 
 end
 
-function NeighbourhoodActivities.getProgress(id)
+local function getName(info, id)
 
-    local info = NeighbourhoodActivities.getInfo(id)
-    if not info then return 0, false end
-    if info.completed then return 1, true end
-
-    return addon.Util.computeProgress(NeighbourhoodActivities.getObjectives(id))
+    if info then return info.taskName or info.name or info.activityName or info.title or ("Endeavour " .. id) end
+    return "Endeavour " .. id
 
 end
 
-function NeighbourhoodActivities.getName(id)
+local function untrackTask(id)
 
-    local info = NeighbourhoodActivities.getInfo(id)
-    if info then return info.taskName or info.name or info.activityName or info.title or ("Endeavour " .. id) end
+    if C_NeighborhoodInitiative and C_NeighborhoodInitiative.RemoveTrackedInitiativeTask then
+        pcall(C_NeighborhoodInitiative.RemoveTrackedInitiativeTask, id)
+    end
 
-    return "Endeavour " .. id
+end
+
+local function buildItem(taskID)
+
+    local info = getInfo(taskID)
+    local objectives = getObjectives(info)
+
+    local progress, hasProgress
+    if info and info.completed then
+        progress, hasProgress = 1, true
+    else
+        progress, hasProgress = addon.Util.computeProgress(objectives)
+    end
+
+    return {
+        kind        = "neighbourhoodActivity",
+        id          = taskID,
+        key         = "initiative:" .. taskID,
+        title       = getName(info, taskID),
+        section     = SECTION,
+        isComplete  = info and info.completed and true or false,
+        progress    = progress,
+        hasProgress = hasProgress,
+        objectives  = objectives,
+
+        openDetails = function() addon.BlizzardInterface.openNeighbourhoodActivities(taskID) end,
+        untrack     = function() untrackTask(taskID) end,
+    }
+
+end
+
+
+--------------------------------------------------------------------------------
+-- PUBLIC API
+--------------------------------------------------------------------------------
+
+function NeighbourhoodActivities.collectAll()
+
+    local items = {}
+
+    for _, taskID in ipairs(getTrackedIDs()) do
+        local item = buildItem(taskID)
+        if item then table.insert(items, item) end
+    end
+
+    return items
+
+end
+
+function NeighbourhoodActivities.collect()
+
+    if addon.Core.getDB().filterByZone then return {} end
+
+    return NeighbourhoodActivities.collectAll()
 
 end

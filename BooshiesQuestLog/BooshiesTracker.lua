@@ -18,23 +18,29 @@ local ROW_GAP    = addon.UI.TrackerEntry.ROW_GAP
 -- at the end of each refresh within that window.
 local SCROLL_PIN_WINDOW = 0.3
 
-local CLASSIFICATION_NAMES = {
-    [0]  = "Important",
-    [1]  = "Legendary",
-    [2]  = "Campaign",
-    [3]  = "Calling",
-    [4]  = "Special",
-    [5]  = "Recurring",
-    [6]  = "Questline",
-    [7]  = "Normal",
-    [8]  = "Bonus",
-    [9]  = "Threat",
-    [10] = "World Quests",
-}
+-- Render order for sections. Composed from each Data module's quest-classification
+-- order (currently only Quests has internal grouping) plus the singular section
+-- each non-quest module produces.
+local SECTION_ORDER = {}
 
-local CLASSIFICATION_ORDER = { 2, 0, 4, 5, 1, 6, 9, 7, 3, 10, 8 }
+local function buildSectionOrder()
 
-local NON_QUEST_SECTION_KEYS = { "achievements", "recipes", "activities", "initiatives" }
+    local seen = {}
+
+    for _, name in ipairs(addon.Data.Quests.SECTION_ORDER) do
+        SECTION_ORDER[#SECTION_ORDER + 1] = name
+        seen[name] = true
+    end
+
+    for _, sectionName in ipairs({ "Achievements", "Crafting", "Monthly", "Endeavours" }) do
+        if not seen[sectionName] then
+            SECTION_ORDER[#SECTION_ORDER + 1] = sectionName
+        end
+    end
+
+end
+
+buildSectionOrder()
 
 
 --------------------------------------------------------------------------------
@@ -52,6 +58,11 @@ local pendingFlashKeys = {}
 --------------------------------------------------------------------------------
 -- LOCAL FUNCTIONS
 --------------------------------------------------------------------------------
+
+local DATA_MODULES = {
+    "Quests", "Achievements", "Recipes", "JournalActivities", "NeighbourhoodActivities",
+}
+
 
 -- LAYOUT & SCROLL --------------------------------------------------------------
 
@@ -162,53 +173,65 @@ local function scrollIntoView(child, padding)
 end
 
 
--- BUILD QUEST GROUPS -----------------------------------------------------------
+-- COLLECT ----------------------------------------------------------------------
 
-local function buildQuestGroups(mapID, mapName)
+local function collectVisibleItems()
 
-    local snapshot = addon.Data.Quests.snapshot()
-    addon.Data.Quests.addTaskQuests(snapshot, mapID)
-    local poiSet = addon.Data.Quests.buildPOISet(mapID)
+    local items = {}
 
-    local groups = {}
-    local total = 0
-
-    for qid, info in pairs(snapshot) do
-        if addon.Data.Quests.shouldShow(qid, snapshot, poiSet, mapID, mapName) then
-            local cls = addon.Data.Quests.getClassification(qid)
-            groups[cls] = groups[cls] or {}
-            table.insert(groups[cls], {
-                questID = qid,
-                title = info.title or ("Quest " .. qid),
-                isComplete = info.isComplete,
-                classification = cls,
-            })
-            total = total + 1
+    for _, name in ipairs(DATA_MODULES) do
+        for _, item in ipairs(addon.Data[name].collect()) do
+            table.insert(items, item)
         end
     end
 
-    return groups, total, snapshot
+    return items
 
 end
 
-local function collectTrackedKeys(snapshot)
+local function collectAllTrackedKeys()
 
-    local set = {}
+    local keys = {}
 
-    for qid in pairs(snapshot) do
-        if addon.Data.Quests.isWatched(qid) then
-            set["quest:" .. qid] = true
+    for _, name in ipairs(DATA_MODULES) do
+        for _, item in ipairs(addon.Data[name].collectAll()) do
+            keys[item.key] = true
         end
     end
 
-    for _, id in ipairs(addon.Data.Achievements.getTracked())             do set["ach:"        .. id] = true end
-    for _, id in ipairs(addon.Data.Recipes.getTracked())                  do set["recipe:"     .. id] = true end
-    for _, id in ipairs(addon.Data.JournalActivities.getTracked())        do set["activity:"   .. id] = true end
-    for _, id in ipairs(addon.Data.NeighbourhoodActivities.getTracked())  do set["initiative:" .. id] = true end
-
-    return set
+    return keys
 
 end
+
+local function groupBySection(items)
+
+    local grouped = {}
+
+    for _, item in ipairs(items) do
+        grouped[item.section] = grouped[item.section] or {}
+        table.insert(grouped[item.section], item)
+    end
+
+    for _, list in pairs(grouped) do
+        table.sort(list, function(a, b) return (a.title or "") < (b.title or "") end)
+    end
+
+    return grouped
+
+end
+
+local function countQuests(items)
+
+    local n = 0
+    for _, item in ipairs(items) do
+        if item.kind == "quest" then n = n + 1 end
+    end
+    return n
+
+end
+
+
+-- TRACKED-KEY DETECTION --------------------------------------------------------
 
 local function detectAndShowNewlyTracked(currentKeys)
 
@@ -219,21 +242,23 @@ local function detectAndShowNewlyTracked(currentKeys)
         return
     end
 
-    addon.Core.getDB().expandedKeys      = addon.Core.getDB().expandedKeys      or {}
-    addon.Core.getDB().collapsedSections = addon.Core.getDB().collapsedSections or {}
+    local db = addon.Core.getDB()
+    db.expandedKeys      = db.expandedKeys      or {}
+    db.collapsedSections = db.collapsedSections or {}
 
     local lastNewKey
     for key in pairs(currentKeys) do
         if not previousTrackedKeys[key] then
             -- Mark expanded even if the zone filter is currently hiding this
             -- item, so it appears expanded next time it becomes visible.
-            addon.Core.getDB().expandedKeys[key] = true
+            db.expandedKeys[key] = true
 
-            local section = addon.UI.TrackerEntry.sectionFor(key)
-            if section ~= nil then
-                addon.Core.getDB().collapsedSections[section] = nil
-            end
-
+            -- We do not know which section this key belongs to without
+            -- iterating the collected items, but the next render pass will
+            -- naturally ensure its section is uncollapsed via a scan. To keep
+            -- the previous behaviour (uncollapse the receiving section) we
+            -- need the item itself; defer that to applyNewlyTrackedSections
+            -- once we have visible items in hand.
             pendingFlashKeys[key] = true
             lastNewKey = key
         end
@@ -250,22 +275,18 @@ local function detectAndShowNewlyTracked(currentKeys)
 
 end
 
-local function sortQuestGroups(groups)
+-- Uncollapse the section that contains a freshly-tracked item. Runs after the
+-- visible items are gathered so we can map key → section directly.
+local function uncollapseSectionsForFlashKeys(items)
 
-    for _, list in pairs(groups) do
-        table.sort(list, function(a, b) return (a.title or "") < (b.title or "") end)
+    local db = addon.Core.getDB()
+    db.collapsedSections = db.collapsedSections or {}
+
+    for _, item in ipairs(items) do
+        if pendingFlashKeys[item.key] then
+            db.collapsedSections[item.section] = nil
+        end
     end
-
-end
-
-local function releaseAllRowsAndSections()
-
-    for _, entry in ipairs(addon.UI.TrackerEntry.active) do
-        addon.UI.TrackerEntry.release(entry)
-    end
-    wipe(addon.UI.TrackerEntry.active)
-
-    addon.UI.TrackerSection.releaseAll()
 
 end
 
@@ -300,166 +321,41 @@ local function applyExpandedChrome()
 end
 
 
--- SECTION RENDERERS ------------------------------------------------------------
+-- RENDER -----------------------------------------------------------------------
 
-local function renderQuestSections(layout, groups, superTracked)
+local function populateEntry(item)
 
-    for _, cls in ipairs(CLASSIFICATION_ORDER) do
-        addon.UI.TrackerSection.render({
-            classification = cls,
-            title          = CLASSIFICATION_NAMES[cls] or ("Class " .. cls),
-            items          = groups[cls],
-            layout         = layout,
-            populateEntry  = function(q)
+    local entry = addon.UI.TrackerEntry.acquire()
+    entry.item = item
+    entry.title:SetText(item.title)
+    entry.title:SetTextColor(unpack(addon.UI.Theme.colors.itemTitle))
 
-                local entry = addon.UI.TrackerEntry.acquire()
-                entry.itemKind = "quest"
-                entry.questID  = q.questID
-                entry.title:SetText(q.title)
-                entry.title:SetTextColor(unpack(addon.UI.Theme.colors.itemTitle))
+    if entry.SetComplete then entry:SetComplete(item.isComplete) end
+    if entry.SetProgress then entry:SetProgress(item.progress, item.hasProgress, item.isComplete) end
 
-                if entry.SetComplete then entry:SetComplete(q.isComplete) end
-
-                local isSuper = superTracked == q.questID and superTracked ~= 0
-                if entry.trackCheck then
-                    entry.trackCheck:Show()
-                    entry.trackCheck:SetChecked(isSuper)
-                end
-                if entry.superBg then entry.superBg:SetShown(isSuper) end
-
-                local pct, hasObj = addon.Data.Quests.getProgress(q.questID)
-                if entry.SetProgress then entry:SetProgress(pct, hasObj, q.isComplete) end
-
-                return entry
-
-            end,
-        })
+    if item.kind == "quest" then
+        if entry.trackCheck then
+            entry.trackCheck:Show()
+            entry.trackCheck:SetChecked(item.isSuperTracked and true or false)
+        end
+        if entry.superBg then entry.superBg:SetShown(item.isSuperTracked and true or false) end
+    else
+        if entry.trackCheck then entry.trackCheck:Hide() end
+        if entry.superBg then entry.superBg:Hide() end
     end
 
-end
-
-local function renderAchievementSection(layout)
-
-    local hideAchievements = addon.Core.getDB().filterByZone and not addon.Core.getDB().alwaysShowAchievements
-
-    addon.UI.TrackerSection.render({
-        classification = "achievements",
-        title          = "Achievements",
-        items          = hideAchievements and {} or addon.Data.Achievements.getTracked(),
-        layout         = layout,
-        populateEntry  = function(achID)
-
-            local id, name, _, completed
-            if GetAchievementInfo then
-                id, name, _, completed = GetAchievementInfo(achID)
-            end
-            if not id then return nil end
-
-            local entry = addon.UI.TrackerEntry.acquire()
-            entry.itemKind      = "achievement"
-            entry.achievementID = achID
-            entry.title:SetText(name or ("Achievement " .. achID))
-            entry.title:SetTextColor(unpack(addon.UI.Theme.colors.itemTitle))
-
-            if entry.SetComplete then entry:SetComplete(completed) end
-            if entry.trackCheck then entry.trackCheck:Hide() end
-
-            local pct, hasAny = addon.Data.Achievements.getProgress(achID)
-            if entry.SetProgress then entry:SetProgress(pct, hasAny, completed) end
-
-            return entry
-
-        end,
-    })
+    return entry
 
 end
 
-local function renderRecipeSection(layout)
+local function releaseAllRowsAndSections()
 
-    addon.UI.TrackerSection.render({
-        classification = "recipes",
-        title          = "Crafting",
-        items          = addon.Core.getDB().filterByZone and {} or addon.Data.Recipes.getTracked(),
-        layout         = layout,
-        populateEntry  = function(recipeID)
+    for _, entry in ipairs(addon.UI.TrackerEntry.active) do
+        addon.UI.TrackerEntry.release(entry)
+    end
+    wipe(addon.UI.TrackerEntry.active)
 
-            local entry = addon.UI.TrackerEntry.acquire()
-            entry.itemKind = "recipe"
-            entry.recipeID = recipeID
-            entry.title:SetText(addon.Data.Recipes.getName(recipeID))
-            entry.title:SetTextColor(unpack(addon.UI.Theme.colors.itemTitle))
-
-            if entry.SetComplete then entry:SetComplete(false) end
-            if entry.trackCheck then entry.trackCheck:Hide() end
-
-            local pct, hasAny = addon.Data.Recipes.getProgress(recipeID)
-            if entry.SetProgress then entry:SetProgress(pct, hasAny, false) end
-
-            return entry
-
-        end,
-    })
-
-end
-
-local function renderActivitySection(layout)
-
-    addon.UI.TrackerSection.render({
-        classification = "activities",
-        title          = "Monthly",
-        items          = addon.Core.getDB().filterByZone and {} or addon.Data.JournalActivities.getTracked(),
-        layout         = layout,
-        populateEntry  = function(actID)
-
-            local info = addon.Data.JournalActivities.getInfo(actID)
-            if not info then return nil end
-
-            local entry = addon.UI.TrackerEntry.acquire()
-            entry.itemKind   = "activity"
-            entry.activityID = actID
-            entry.title:SetText(info.activityName or info.name or ("Activity " .. actID))
-            entry.title:SetTextColor(unpack(addon.UI.Theme.colors.itemTitle))
-
-            if entry.SetComplete then entry:SetComplete(info.completed) end
-            if entry.trackCheck then entry.trackCheck:Hide() end
-
-            local pct, hasAny = addon.Data.JournalActivities.getProgress(actID)
-            if entry.SetProgress then entry:SetProgress(pct, hasAny, info.completed) end
-
-            return entry
-
-        end,
-    })
-
-end
-
-local function renderInitiativeSection(layout)
-
-    addon.UI.TrackerSection.render({
-        classification = "initiatives",
-        title          = "Endeavours",
-        items          = addon.Core.getDB().filterByZone and {} or addon.Data.NeighbourhoodActivities.getTracked(),
-        layout         = layout,
-        populateEntry  = function(taskID)
-
-            local info = addon.Data.NeighbourhoodActivities.getInfo(taskID)
-
-            local entry = addon.UI.TrackerEntry.acquire()
-            entry.itemKind     = "initiative"
-            entry.initiativeID = taskID
-            entry.title:SetText(addon.Data.NeighbourhoodActivities.getName(taskID))
-            entry.title:SetTextColor(unpack(addon.UI.Theme.colors.itemTitle))
-
-            if entry.SetComplete then entry:SetComplete(info and info.completed) end
-            if entry.trackCheck then entry.trackCheck:Hide() end
-
-            local pct, hasAny = addon.Data.NeighbourhoodActivities.getProgress(taskID)
-            if entry.SetProgress then entry:SetProgress(pct, hasAny, info and info.completed) end
-
-            return entry
-
-        end,
-    })
+    addon.UI.TrackerSection.releaseAll()
 
 end
 
@@ -476,7 +372,7 @@ local function applyExpansionState(layout)
     relayoutLayout(layout)
 
     for _, entry in ipairs(addon.UI.TrackerEntry.active) do
-        if expandedKeys[addon.UI.TrackerEntry.keyFor(entry)] then
+        if entry.item and expandedKeys[entry.item.key] then
             addon.UI.ObjectivePanel.expand(entry)
         end
     end
@@ -495,7 +391,7 @@ local function applyPendingScroll()
     local target
 
     for _, entry in ipairs(addon.UI.TrackerEntry.active) do
-        if addon.UI.TrackerEntry.keyFor(entry) == pendingScrollKey then
+        if entry.item and entry.item.key == pendingScrollKey then
             target = entry
             break
         end
@@ -503,7 +399,7 @@ local function applyPendingScroll()
 
     if not target then
         for _, header in ipairs(addon.UI.TrackerSection.active) do
-            if addon.UI.TrackerEntry.keyFor(header) == pendingScrollKey then
+            if header.key == pendingScrollKey then
                 target = header
                 break
             end
@@ -519,8 +415,7 @@ local function applyPendingFlashes()
     if not next(pendingFlashKeys) then return end
 
     for _, entry in ipairs(addon.UI.TrackerEntry.active) do
-        local key = addon.UI.TrackerEntry.keyFor(entry)
-        if key and pendingFlashKeys[key] and entry.FlashAttention then
+        if entry.item and pendingFlashKeys[entry.item.key] and entry.FlashAttention then
             entry:FlashAttention()
         end
     end
@@ -545,8 +440,8 @@ local function refreshUI()
     local mapID = addon.Util.getPlayerZoneMapID()
     local mapName = addon.Util.getMapName(mapID) or "Unknown"
 
-    local groups, total, snapshot = buildQuestGroups(mapID, mapName)
-    titleText:SetText(("Quests (%d)"):format(total))
+    local items = collectVisibleItems()
+    titleText:SetText(("Quests (%d)"):format(countQuests(items)))
 
     if addon.Core.getDB().collapsed then
         releaseAllRowsAndSections()
@@ -554,22 +449,29 @@ local function refreshUI()
         return
     end
 
-    detectAndShowNewlyTracked(collectTrackedKeys(snapshot))
+    detectAndShowNewlyTracked(collectAllTrackedKeys())
+    uncollapseSectionsForFlashKeys(items)
 
     applyExpandedChrome()
     zoneText:SetText(mapName)
 
-    sortQuestGroups(groups)
     releaseAllRowsAndSections()
 
+    local bySection = groupBySection(items)
     local layout = {}
-    local superTracked = C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID and C_SuperTrack.GetSuperTrackedQuestID() or 0
 
-    renderQuestSections(layout, groups, superTracked)
-    renderAchievementSection(layout)
-    renderRecipeSection(layout)
-    renderActivitySection(layout)
-    renderInitiativeSection(layout)
+    for _, sectionName in ipairs(SECTION_ORDER) do
+        local sectionItems = bySection[sectionName]
+        if sectionItems and #sectionItems > 0 then
+            addon.UI.TrackerSection.render({
+                section       = sectionName,
+                title         = sectionName,
+                items         = sectionItems,
+                layout        = layout,
+                populateEntry = populateEntry,
+            })
+        end
+    end
 
     applyExpansionState(layout)
     relayoutLayout(layout)
@@ -600,17 +502,17 @@ end
 
 function BooshiesTracker.handleEntryClick(entry)
 
-    local key = addon.UI.TrackerEntry.keyFor(entry)
-    if not key then return end
+    local item = entry.item
+    if not item then return end
 
     addon.Core.getDB().expandedKeys = addon.Core.getDB().expandedKeys or {}
-    if addon.Core.getDB().expandedKeys[key] then
-        addon.Core.getDB().expandedKeys[key] = nil
+    if addon.Core.getDB().expandedKeys[item.key] then
+        addon.Core.getDB().expandedKeys[item.key] = nil
     else
-        addon.Core.getDB().expandedKeys[key] = true
+        addon.Core.getDB().expandedKeys[item.key] = true
     end
 
-    pendingScrollKey = key
+    pendingScrollKey = item.key
     pendingScrollExpiresAt = GetTime() + SCROLL_PIN_WINDOW
 
     BooshiesTracker.refresh()
@@ -619,11 +521,13 @@ end
 
 function BooshiesTracker.handleSectionClick(header)
 
-    addon.Core.getDB().collapsedSections = addon.Core.getDB().collapsedSections or {}
-    addon.Core.getDB().collapsedSections[header.classification] =
-        not addon.Core.getDB().collapsedSections[header.classification]
+    local sectionName = header.section
+    if not sectionName then return end
 
-    pendingScrollKey = addon.UI.TrackerEntry.keyFor(header)
+    addon.Core.getDB().collapsedSections = addon.Core.getDB().collapsedSections or {}
+    addon.Core.getDB().collapsedSections[sectionName] = not addon.Core.getDB().collapsedSections[sectionName]
+
+    pendingScrollKey = header.key
     pendingScrollExpiresAt = GetTime() + SCROLL_PIN_WINDOW
 
     BooshiesTracker.refresh()
@@ -642,12 +546,8 @@ function BooshiesTracker.collapseAll()
     addon.Core.getDB().expandedKeys = {}
     addon.Core.getDB().collapsedSections = addon.Core.getDB().collapsedSections or {}
 
-    for _, cls in ipairs(CLASSIFICATION_ORDER) do
-        addon.Core.getDB().collapsedSections[cls] = true
-    end
-
-    for _, k in ipairs(NON_QUEST_SECTION_KEYS) do
-        addon.Core.getDB().collapsedSections[k] = true
+    for _, sectionName in ipairs(SECTION_ORDER) do
+        addon.Core.getDB().collapsedSections[sectionName] = true
     end
 
     BooshiesTracker.refresh()
@@ -659,9 +559,13 @@ function BooshiesTracker.updateSuperTrack()
     local current = C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID and C_SuperTrack.GetSuperTrackedQuestID() or 0
 
     for _, entry in ipairs(addon.UI.TrackerEntry.active) do
-        local isSuper = entry.questID and entry.questID == current and current ~= 0
-        if entry.trackCheck then entry.trackCheck:SetChecked(isSuper) end
+        local item = entry.item
+        local isSuper = item and item.kind == "quest" and item.id == current and current ~= 0
+        if entry.trackCheck then entry.trackCheck:SetChecked(isSuper and true or false) end
         if entry.superBg then entry.superBg:SetShown(isSuper and true or false) end
+        if item and item.kind == "quest" then
+            item.isSuperTracked = isSuper and true or false
+        end
     end
 
 end

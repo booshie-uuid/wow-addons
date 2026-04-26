@@ -7,6 +7,13 @@ addon.Data.Achievements = Achievements
 
 
 --------------------------------------------------------------------------------
+-- LOCAL CONSTANTS
+--------------------------------------------------------------------------------
+
+local SECTION = "Achievements"
+
+
+--------------------------------------------------------------------------------
 -- LOCAL FUNCTIONS
 --------------------------------------------------------------------------------
 
@@ -25,12 +32,7 @@ local function getHeader(achID)
 
 end
 
-
---------------------------------------------------------------------------------
--- PUBLIC API
---------------------------------------------------------------------------------
-
-function Achievements.getTracked()
+local function getTrackedIDs()
 
     local list = {}
 
@@ -49,7 +51,7 @@ function Achievements.getTracked()
 
 end
 
-function Achievements.getCriteria(achID)
+local function getCriteria(achID)
 
     local list = {}
     if not _G.GetAchievementNumCriteria or not _G.GetAchievementCriteriaInfo then return list end
@@ -86,7 +88,7 @@ function Achievements.getCriteria(achID)
 
 end
 
-function Achievements.getProgress(achID)
+local function getProgress(achID, criteria)
 
     -- Zero-criteria achievements report (1, true) when complete, (0, false)
     -- when not, so the progress bar stays hidden on incomplete single-step
@@ -98,6 +100,74 @@ function Achievements.getProgress(achID)
         return completed and 1 or 0, completed
     end
 
-    return addon.Util.computeProgress(Achievements.getCriteria(achID))
+    return addon.Util.computeProgress(criteria)
+
+end
+
+local function untrackAchievement(id)
+
+    local t = Enum and Enum.ContentTrackingType and Enum.ContentTrackingType.Achievement
+    local stopType = (Enum and Enum.ContentTrackingStopType and Enum.ContentTrackingStopType.Player) or 2
+
+    if C_ContentTracking and C_ContentTracking.StopTracking and t then
+        pcall(C_ContentTracking.StopTracking, t, id, stopType)
+    end
+
+    if _G.RemoveTrackedAchievement then
+        pcall(_G.RemoveTrackedAchievement, id)
+    end
+
+end
+
+local function buildItem(achID)
+
+    local _, name, _, completed = GetAchievementInfo and GetAchievementInfo(achID)
+    if not name then return nil end
+
+    local objectives = getCriteria(achID)
+    local progress, hasProgress = getProgress(achID, objectives)
+
+    return {
+        kind        = "achievement",
+        id          = achID,
+        key         = "ach:" .. achID,
+        title       = name,
+        section     = SECTION,
+        isComplete  = completed and true or false,
+        progress    = progress,
+        hasProgress = hasProgress,
+        objectives  = objectives,
+
+        openDetails = function() addon.BlizzardInterface.openAchievement(achID) end,
+        untrack     = function() untrackAchievement(achID) end,
+        dump        = function() addon.Debug.dumpAchievement(achID) end,
+    }
+
+end
+
+
+--------------------------------------------------------------------------------
+-- PUBLIC API
+--------------------------------------------------------------------------------
+
+function Achievements.collectAll()
+
+    local items = {}
+
+    for _, achID in ipairs(getTrackedIDs()) do
+        local item = buildItem(achID)
+        if item then table.insert(items, item) end
+    end
+
+    return items
+
+end
+
+function Achievements.collect()
+
+    local db = addon.Core.getDB()
+    if db.filterByZone and not db.alwaysShowAchievements then return {} end
+
+    return Achievements.collectAll()
 
 end

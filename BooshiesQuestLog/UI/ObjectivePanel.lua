@@ -71,22 +71,6 @@ local function measureText(text)
 
 end
 
-local function fetchObjectivesFor(row)
-
-    if row.itemKind == "achievement" then
-        return addon.Data.Achievements.getCriteria(row.achievementID)
-    elseif row.itemKind == "recipe" then
-        return addon.Data.Recipes.getReagents(row.recipeID)
-    elseif row.itemKind == "activity" then
-        return addon.Data.JournalActivities.getObjectives(row.activityID)
-    elseif row.itemKind == "initiative" then
-        return addon.Data.NeighbourhoodActivities.getObjectives(row.initiativeID)
-    end
-
-    return C_QuestLog.GetQuestObjectives(row.questID) or {}
-
-end
-
 -- The widest count string is tracked so descriptions align in a column.
 local function measureObjectiveParts(objectives)
 
@@ -250,7 +234,8 @@ function ObjectivePanel.expand(row)
     local contentW = (parent and parent:GetWidth()) or ((addon.Core.getDB().width or 280) - 40)
     local objW = math.max(contentW - OBJ_LEFT_INDENT - OBJ_RIGHT_MARGIN, 60)
 
-    local objectives = fetchObjectivesFor(row)
+    local item = row.item
+    local objectives = (item and item.objectives) or {}
     local parts, maxCountW = measureObjectiveParts(objectives)
     local cols = computeObjectiveColumns(objW, maxCountW)
 
@@ -263,7 +248,7 @@ function ObjectivePanel.expand(row)
     end
 
     -- Quests get an extra "Ready to turn in" line once their objectives are all done.
-    if row.itemKind ~= "achievement" and row.questID and C_QuestLog.IsComplete(row.questID) then
+    if item and item.kind == "quest" and item.isComplete then
         idx = idx + 1
         y = layoutObjectiveRow(row, ensureObjEntry(row, idx), y, READY_TO_TURN_IN_PART, cols)
     end

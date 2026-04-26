@@ -7,10 +7,17 @@ addon.Data.Recipes = Recipes
 
 
 --------------------------------------------------------------------------------
--- PUBLIC API
+-- LOCAL CONSTANTS
 --------------------------------------------------------------------------------
 
-function Recipes.getTracked()
+local SECTION = "Crafting"
+
+
+--------------------------------------------------------------------------------
+-- LOCAL FUNCTIONS
+--------------------------------------------------------------------------------
+
+local function getTrackedIDs()
 
     local list = {}
     if not C_TradeSkillUI or not C_TradeSkillUI.GetRecipesTracked then return list end
@@ -23,7 +30,7 @@ function Recipes.getTracked()
 
 end
 
-function Recipes.getName(recipeID)
+local function getName(recipeID)
 
     if C_TradeSkillUI and C_TradeSkillUI.GetRecipeInfo then
         local ok, info = pcall(C_TradeSkillUI.GetRecipeInfo, recipeID)
@@ -34,7 +41,7 @@ function Recipes.getName(recipeID)
 
 end
 
-function Recipes.getReagents(recipeID)
+local function getReagents(recipeID)
 
     local reagents = {}
     if not C_TradeSkillUI or not C_TradeSkillUI.GetRecipeSchematic then return reagents end
@@ -69,6 +76,60 @@ function Recipes.getReagents(recipeID)
 
 end
 
-function Recipes.getProgress(recipeID)
-    return addon.Util.computeProgress(Recipes.getReagents(recipeID))
+local function untrackRecipe(recipeID)
+
+    if not C_TradeSkillUI or not C_TradeSkillUI.SetRecipeTracked then return end
+
+    pcall(C_TradeSkillUI.SetRecipeTracked, recipeID, false, false)
+    pcall(C_TradeSkillUI.SetRecipeTracked, recipeID, false, true)
+
+end
+
+local function buildItem(recipeID)
+
+    local objectives = getReagents(recipeID)
+    local progress, hasProgress = addon.Util.computeProgress(objectives)
+
+    return {
+        kind        = "recipe",
+        id          = recipeID,
+        key         = "recipe:" .. recipeID,
+        title       = getName(recipeID),
+        section     = SECTION,
+        isComplete  = false,
+        progress    = progress,
+        hasProgress = hasProgress,
+        objectives  = objectives,
+
+        openDetails = function() addon.BlizzardInterface.openRecipe(recipeID) end,
+        untrack     = function() untrackRecipe(recipeID) end,
+        dump        = function() addon.Debug.dumpRecipe(recipeID) end,
+    }
+
+end
+
+
+--------------------------------------------------------------------------------
+-- PUBLIC API
+--------------------------------------------------------------------------------
+
+function Recipes.collectAll()
+
+    local items = {}
+
+    for _, recipeID in ipairs(getTrackedIDs()) do
+        local item = buildItem(recipeID)
+        if item then table.insert(items, item) end
+    end
+
+    return items
+
+end
+
+function Recipes.collect()
+
+    if addon.Core.getDB().filterByZone then return {} end
+
+    return Recipes.collectAll()
+
 end

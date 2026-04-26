@@ -7,6 +7,44 @@ addon.Data.Quests = Quests
 
 
 --------------------------------------------------------------------------------
+-- LOCAL CONSTANTS
+--------------------------------------------------------------------------------
+
+-- Quest classification → display name. The display name doubles as the
+-- TrackedItem.section value, the bySection grouping key, and the
+-- collapsedSections DB key.
+local CLASSIFICATION_NAMES = {
+    [0]  = "Important",
+    [1]  = "Legendary",
+    [2]  = "Campaign",
+    [3]  = "Calling",
+    [4]  = "Special",
+    [5]  = "Recurring",
+    [6]  = "Questline",
+    [7]  = "Normal",
+    [8]  = "Bonus",
+    [9]  = "Threat",
+    [10] = "World Quests",
+}
+
+-- Render order for the quest section names. Other Data modules contribute
+-- their own section names to the master SECTION_ORDER in BooshiesTracker.
+Quests.SECTION_ORDER = {
+    "Campaign",
+    "Important",
+    "Special",
+    "Recurring",
+    "Legendary",
+    "Questline",
+    "Threat",
+    "Normal",
+    "Calling",
+    "World Quests",
+    "Bonus",
+}
+
+
+--------------------------------------------------------------------------------
 -- LOCAL FUNCTIONS
 --------------------------------------------------------------------------------
 
@@ -29,12 +67,7 @@ local function isCampaign(info)
     return info and info.campaignID and info.campaignID > 0
 end
 
-
---------------------------------------------------------------------------------
--- PUBLIC API
---------------------------------------------------------------------------------
-
-function Quests.snapshot()
+local function buildSnapshot(mapID)
 
     local snapshot, headerName = {}, nil
     local count = C_QuestLog.GetNumQuestLogEntries() or 0
@@ -59,12 +92,6 @@ function Quests.snapshot()
         end
     end
 
-    return snapshot
-
-end
-
-function Quests.addTaskQuests(snapshot, mapID)
-
     if C_QuestLog and C_QuestLog.GetNumWorldQuestWatches and C_QuestLog.GetQuestIDForWorldQuestWatchIndex then
         local ok, n = pcall(C_QuestLog.GetNumWorldQuestWatches)
 
@@ -76,31 +103,33 @@ function Quests.addTaskQuests(snapshot, mapID)
         end
     end
 
-    if not mapID then return end
+    if mapID then
+        if C_TaskQuest and C_TaskQuest.GetQuestsForPlayerByMapID then
+            local ok, list = pcall(C_TaskQuest.GetQuestsForPlayerByMapID, mapID)
 
-    if C_TaskQuest and C_TaskQuest.GetQuestsForPlayerByMapID then
-        local ok, list = pcall(C_TaskQuest.GetQuestsForPlayerByMapID, mapID)
+            if ok and type(list) == "table" then
+                for _, t in ipairs(list) do
+                    addTaskEntry(snapshot, t.questId or t.questID, "fromTaskAPI")
+                end
+            end
+        end
 
-        if ok and type(list) == "table" then
-            for _, t in ipairs(list) do
-                addTaskEntry(snapshot, t.questId or t.questID, "fromTaskAPI")
+        if C_QuestLog and C_QuestLog.GetQuestsOnMap then
+            local ok, list = pcall(C_QuestLog.GetQuestsOnMap, mapID)
+
+            if ok and type(list) == "table" then
+                for _, t in ipairs(list) do
+                    addTaskEntry(snapshot, t.questID, "fromPOI")
+                end
             end
         end
     end
 
-    if C_QuestLog and C_QuestLog.GetQuestsOnMap then
-        local ok, list = pcall(C_QuestLog.GetQuestsOnMap, mapID)
-
-        if ok and type(list) == "table" then
-            for _, t in ipairs(list) do
-                addTaskEntry(snapshot, t.questID, "fromPOI")
-            end
-        end
-    end
+    return snapshot
 
 end
 
-function Quests.buildPOISet(mapID)
+local function buildPOISet(mapID)
 
     local set = {}
     if not mapID then return set end
@@ -117,7 +146,7 @@ function Quests.buildPOISet(mapID)
 
 end
 
-function Quests.getClassification(questID)
+local function getClassification(questID)
 
     if C_QuestInfoSystem and C_QuestInfoSystem.GetQuestClassification then
         local v = C_QuestInfoSystem.GetQuestClassification(questID)
@@ -129,11 +158,7 @@ function Quests.getClassification(questID)
 
 end
 
-function Quests.getProgress(questID)
-    return addon.Util.computeProgress(C_QuestLog.GetQuestObjectives(questID))
-end
-
-function Quests.isWatched(questID)
+local function isWatched(questID)
 
     if C_QuestLog and C_QuestLog.GetQuestWatchType then
         local wt = C_QuestLog.GetQuestWatchType(questID)
@@ -144,11 +169,11 @@ function Quests.isWatched(questID)
 
 end
 
-function Quests.shouldShow(questID, snapshot, poiSet, currentMapID, currentMapName)
+local function shouldShow(questID, snapshot, poiSet)
 
     local info = snapshot[questID]
     if not info then return false end
-    if not Quests.isWatched(questID) then return false end
+    if not isWatched(questID) then return false end
 
     local db = addon.Core.getDB()
 
@@ -157,5 +182,84 @@ function Quests.shouldShow(questID, snapshot, poiSet, currentMapID, currentMapNa
     if db.alwaysShowCampaign and isCampaign(info) then return true end
 
     return false
+
+end
+
+local function untrackQuest(questID)
+
+    if not C_QuestLog then return end
+
+    pcall(C_QuestLog.RemoveQuestWatch, questID)
+    pcall(C_QuestLog.RemoveWorldQuestWatch, questID)
+
+end
+
+local function buildItem(questID, info, superTrackedID)
+
+    local cls = getClassification(questID)
+    local section = CLASSIFICATION_NAMES[cls] or "Normal"
+
+    local objectives = C_QuestLog.GetQuestObjectives(questID) or {}
+    local progress, hasProgress = addon.Util.computeProgress(objectives)
+
+    return {
+        kind        = "quest",
+        id          = questID,
+        key         = "quest:" .. questID,
+        title       = info.title or ("Quest " .. questID),
+        section     = section,
+        isComplete  = info.isComplete and true or false,
+        progress    = progress,
+        hasProgress = hasProgress,
+        objectives  = objectives,
+
+        isSuperTracked = superTrackedID == questID and superTrackedID ~= 0,
+
+        openDetails = function() addon.BlizzardInterface.openQuest(questID) end,
+        untrack     = function() untrackQuest(questID) end,
+        dump        = function() addon.Debug.dumpQuest(questID) end,
+    }
+
+end
+
+
+--------------------------------------------------------------------------------
+-- PUBLIC API
+--------------------------------------------------------------------------------
+
+function Quests.collectAll()
+
+    local mapID = addon.Util.getPlayerZoneMapID()
+    local snapshot = buildSnapshot(mapID)
+    local superTrackedID = C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID and C_SuperTrack.GetSuperTrackedQuestID() or 0
+
+    local items = {}
+
+    for qid, info in pairs(snapshot) do
+        if isWatched(qid) then
+            table.insert(items, buildItem(qid, info, superTrackedID))
+        end
+    end
+
+    return items
+
+end
+
+function Quests.collect()
+
+    local mapID = addon.Util.getPlayerZoneMapID()
+    local snapshot = buildSnapshot(mapID)
+    local poiSet = buildPOISet(mapID)
+    local superTrackedID = C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID and C_SuperTrack.GetSuperTrackedQuestID() or 0
+
+    local items = {}
+
+    for qid, info in pairs(snapshot) do
+        if shouldShow(qid, snapshot, poiSet) then
+            table.insert(items, buildItem(qid, info, superTrackedID))
+        end
+    end
+
+    return items
 
 end

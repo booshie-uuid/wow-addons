@@ -17,18 +17,6 @@ local BAR_BOTTOM_PAD = 3
 local TOP_CLUSTER_Y  = 3        -- vertical offset for arrow + track + completion icon
 local FLASH_DURATION = 0.8
 
--- Prefixes used to build the unique key for an entry across pool recycles
--- (scroll pin, newly-tracked detection). The "section" prefix is used by
--- Section headers (a sibling layout item) which share this keying scheme.
-local KEY_PREFIXES = {
-    quest       = "quest:",
-    achievement = "ach:",
-    recipe      = "recipe:",
-    activity    = "activity:",
-    initiative  = "initiative:",
-    section     = "section:",
-}
-
 TrackerEntry.ROW_HEIGHT = ROW_HEIGHT
 TrackerEntry.ROW_GAP    = ROW_GAP
 
@@ -49,74 +37,6 @@ TrackerEntry.active = active
 --------------------------------------------------------------------------------
 -- LOCAL FUNCTIONS
 --------------------------------------------------------------------------------
-
--- UNTRACK ----------------------------------------------------------------------
-
-local function tryCall(fn, ...)
-    if type(fn) ~= "function" then return false end
-    local ok = pcall(fn, ...)
-    return ok
-end
-
-local function untrack(entry)
-
-    if not entry then return end
-
-    if entry.questID then
-        if C_QuestLog then
-            tryCall(C_QuestLog.RemoveQuestWatch, entry.questID)
-            tryCall(C_QuestLog.RemoveWorldQuestWatch, entry.questID)
-        end
-
-    elseif entry.achievementID then
-        local id = entry.achievementID
-        local t = Enum and Enum.ContentTrackingType and Enum.ContentTrackingType.Achievement
-        local stopType = (Enum and Enum.ContentTrackingStopType and Enum.ContentTrackingStopType.Player) or 2
-
-        if C_ContentTracking and C_ContentTracking.StopTracking and t then
-            tryCall(C_ContentTracking.StopTracking, t, id, stopType)
-        end
-        tryCall(_G.RemoveTrackedAchievement, id)
-
-    elseif entry.recipeID then
-        if C_TradeSkillUI and C_TradeSkillUI.SetRecipeTracked then
-            tryCall(C_TradeSkillUI.SetRecipeTracked, entry.recipeID, false, false)
-            tryCall(C_TradeSkillUI.SetRecipeTracked, entry.recipeID, false, true)
-        end
-
-    elseif entry.activityID then
-        if C_PerksActivities then
-            -- Probe API for an explicit untrack/remove function and stop on first
-            -- success, since the exact name varies across game versions.
-            for fname, fn in pairs(C_PerksActivities) do
-                if type(fn) == "function" then
-                    local lk = fname:lower()
-                    if lk:find("untrack") or (lk:find("remove") and (lk:find("track") or lk:find("activit"))) then
-                        if tryCall(fn, entry.activityID) then break end
-                    end
-                end
-            end
-
-            -- Also call any SetXxxTracked-style toggle with false, in case the API
-            -- exposes a setter rather than a remove.
-            for fname, fn in pairs(C_PerksActivities) do
-                if type(fn) == "function" then
-                    local lk = fname:lower()
-                    if lk:find("^set") and lk:find("track") then
-                        tryCall(fn, entry.activityID, false)
-                    end
-                end
-            end
-        end
-
-    elseif entry.initiativeID then
-        if C_NeighborhoodInitiative then
-            tryCall(C_NeighborhoodInitiative.RemoveTrackedInitiativeTask, entry.initiativeID)
-        end
-    end
-
-end
-
 
 -- WIDGET BUILDERS --------------------------------------------------------------
 
@@ -201,8 +121,8 @@ local function buildArrow(entry)
 end
 
 -- Radio-style super-track button on the right edge. The OnClick handler reads
--- entry.questID at click time so it stays current as the entry gets recycled
--- across different quests by the pool.
+-- entry.item at click time so it stays current as the entry gets recycled
+-- across different items by the pool.
 local function buildSuperTrackBtn(entry)
 
     local track = CreateFrame("Button", nil, entry.btn)
@@ -237,12 +157,12 @@ local function buildSuperTrackBtn(entry)
     function track:GetChecked() return self._checked end
 
     track:SetScript("OnClick", function(self)
-        local qid = entry.questID
-        if not qid or not C_SuperTrack then return end
+        local item = entry.item
+        if not item or item.kind ~= "quest" or not C_SuperTrack then return end
         if self:GetChecked() then
             C_SuperTrack.SetSuperTrackedQuestID(0)
         else
-            C_SuperTrack.SetSuperTrackedQuestID(qid)
+            C_SuperTrack.SetSuperTrackedQuestID(item.id)
         end
     end)
     track:SetScript("OnEnter", function(self)
@@ -359,16 +279,17 @@ local function wireClick(entry)
 
     btn:SetScript("OnClick", function(self, button)
 
-        if not entry.questID and not entry.achievementID and not entry.recipeID and not entry.activityID and not entry.initiativeID then return end
+        local item = entry.item
+        if not item then return end
 
         -- Ctrl+Left: super-track this quest.
         if IsControlKeyDown() and button == "LeftButton" then
-            if entry.questID and C_SuperTrack then
+            if item.kind == "quest" and C_SuperTrack then
                 local cur = C_SuperTrack.GetSuperTrackedQuestID and C_SuperTrack.GetSuperTrackedQuestID() or 0
-                if cur == entry.questID then
+                if cur == item.id then
                     C_SuperTrack.SetSuperTrackedQuestID(0)
                 else
-                    C_SuperTrack.SetSuperTrackedQuestID(entry.questID)
+                    C_SuperTrack.SetSuperTrackedQuestID(item.id)
                 end
             end
             return
@@ -376,37 +297,21 @@ local function wireClick(entry)
 
         -- Ctrl+Right: dump debug metadata (debug mode only).
         if IsControlKeyDown() and button == "RightButton" then
-            if addon.Core.getDB().debug then
-                if entry.questID then
-                    addon.Debug.dumpQuest(entry.questID)
-                elseif entry.achievementID then
-                    addon.Debug.dumpAchievement(entry.achievementID)
-                elseif entry.recipeID then
-                    addon.Debug.dumpRecipe(entry.recipeID)
-                end
+            if addon.Core.getDB().debug and item.dump then
+                item.dump()
             end
             return
         end
 
         -- Shift+Left: untrack.
         if IsShiftKeyDown() and button == "LeftButton" then
-            untrack(entry)
+            if item.untrack then item.untrack() end
             return
         end
 
         -- Right: open the appropriate Blizzard window for this entry's kind.
         if button == "RightButton" then
-            if entry.questID then
-                addon.BlizzardInterface.openQuest(entry.questID)
-            elseif entry.achievementID then
-                addon.BlizzardInterface.openAchievement(entry.achievementID)
-            elseif entry.recipeID then
-                addon.BlizzardInterface.openRecipe(entry.recipeID)
-            elseif entry.activityID then
-                addon.BlizzardInterface.openJournalActivities()
-            elseif entry.initiativeID then
-                addon.BlizzardInterface.openNeighbourhoodActivities(entry.initiativeID)
-            end
+            if item.openDetails then item.openDetails() end
             return
         end
 
@@ -464,12 +369,7 @@ function TrackerEntry.release(entry)
     if entry.flashAnim then entry.flashAnim:Stop() end
     if entry.flashBg then entry.flashBg:Hide() end
 
-    entry.questID = nil
-    entry.achievementID = nil
-    entry.recipeID = nil
-    entry.activityID = nil
-    entry.initiativeID = nil
-    entry.itemKind = nil
+    entry.item = nil
 
     table.insert(pool, entry)
 
@@ -479,50 +379,5 @@ function TrackerEntry.releaseAll()
 
     for _, entry in ipairs(active) do TrackerEntry.release(entry) end
     wipe(active)
-
-end
-
-function TrackerEntry.keyFor(item)
-
-    if not item then return nil end
-
-    if item.itemKind == "achievement" and item.achievementID then
-        return KEY_PREFIXES.achievement .. item.achievementID
-    end
-    if item.itemKind == "recipe" and item.recipeID then
-        return KEY_PREFIXES.recipe .. item.recipeID
-    end
-    if item.itemKind == "activity" and item.activityID then
-        return KEY_PREFIXES.activity .. item.activityID
-    end
-    if item.itemKind == "initiative" and item.initiativeID then
-        return KEY_PREFIXES.initiative .. item.initiativeID
-    end
-    if item.questID then
-        return KEY_PREFIXES.quest .. item.questID
-    end
-    if item.itemKind == "section" and item.classification ~= nil then
-        return KEY_PREFIXES.section .. tostring(item.classification)
-    end
-
-    return nil
-
-end
-
-function TrackerEntry.sectionFor(key)
-
-    if not key then return nil end
-
-    if key:sub(1, #KEY_PREFIXES.achievement) == KEY_PREFIXES.achievement then return "achievements" end
-    if key:sub(1, #KEY_PREFIXES.recipe)      == KEY_PREFIXES.recipe      then return "recipes"      end
-    if key:sub(1, #KEY_PREFIXES.activity)    == KEY_PREFIXES.activity    then return "activities"   end
-    if key:sub(1, #KEY_PREFIXES.initiative)  == KEY_PREFIXES.initiative  then return "initiatives"  end
-
-    if key:sub(1, #KEY_PREFIXES.quest) == KEY_PREFIXES.quest then
-        local qid = tonumber(key:sub(#KEY_PREFIXES.quest + 1))
-        if qid then return addon.Data.Quests.getClassification(qid) end
-    end
-
-    return nil
 
 end

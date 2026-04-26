@@ -76,6 +76,48 @@ local function migrateExpandedKey()
 
 end
 
+-- Quest classification numbers used to be the collapsedSections keys for
+-- quest sections. Map them onto the display names that TrackedItem.section
+-- now uses. Same for the four kind-keyed non-quest sections.
+local COLLAPSED_SECTION_REMAP = {
+    [0]  = "Important",
+    [1]  = "Legendary",
+    [2]  = "Campaign",
+    [3]  = "Calling",
+    [4]  = "Special",
+    [5]  = "Recurring",
+    [6]  = "Questline",
+    [7]  = "Normal",
+    [8]  = "Bonus",
+    [9]  = "Threat",
+    [10] = "World Quests",
+    achievements = "Achievements",
+    recipes      = "Crafting",
+    activities   = "Monthly",
+    initiatives  = "Endeavours",
+}
+
+local function migrateCollapsedSections()
+
+    local cs = BooshiesQuestLogDB.collapsedSections
+    if type(cs) ~= "table" then return end
+
+    local migrated = {}
+
+    for key, value in pairs(cs) do
+        local mapped = COLLAPSED_SECTION_REMAP[key]
+        if mapped then
+            migrated[mapped] = value
+        else
+            -- Already a display-name key (or unknown); keep as-is.
+            migrated[key] = value
+        end
+    end
+
+    BooshiesQuestLogDB.collapsedSections = migrated
+
+end
+
 local function clampMaxHeight()
 
     -- Saved height may exceed current screen if the player resized the
@@ -124,6 +166,7 @@ loader:SetScript("OnEvent", function(self, event, name)
 
     mergeDefaults()
     migrateExpandedKey()
+    migrateCollapsedSections()
     clampMaxHeight()
 
     self:UnregisterEvent("ADDON_LOADED")

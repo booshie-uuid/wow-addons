@@ -72,7 +72,7 @@ local function createHeader()
     hdr.count = count
 
     hdr:SetScript("OnClick", function(self)
-        if self.classification == nil then return end
+        if not self.section then return end
         config.onClick(self)
     end)
 
@@ -101,7 +101,8 @@ end
 function TrackerSection.release(hdr)
 
     hdr:Hide()
-    hdr.classification = nil
+    hdr.section = nil
+    hdr.key = nil
 
     table.insert(pool, hdr)
 
@@ -119,11 +120,12 @@ function TrackerSection.render(spec)
     if not spec.items or #spec.items == 0 then return end
 
     local hdr = TrackerSection.acquire()
-    hdr.classification = spec.classification
+    hdr.section = spec.section
+    hdr.key     = "section:" .. spec.section
     hdr.title:SetText(spec.title)
     hdr.title:SetTextColor(unpack(addon.UI.Theme.colors.sectionTitle))
 
-    local collapsed = (addon.Core.getDB().collapsedSections or {})[spec.classification] and true or false
+    local collapsed = (addon.Core.getDB().collapsedSections or {})[spec.section] and true or false
 
     hdr.count:SetText(#spec.items)
     hdr.arrow:SetTexture(collapsed and addon.UI.Theme.textures.plusButton or addon.UI.Theme.textures.minusButton)

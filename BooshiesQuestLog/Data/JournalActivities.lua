@@ -7,6 +7,13 @@ addon.Data.JournalActivities = JournalActivities
 
 
 --------------------------------------------------------------------------------
+-- LOCAL CONSTANTS
+--------------------------------------------------------------------------------
+
+local SECTION = "Monthly"
+
+
+--------------------------------------------------------------------------------
 -- LOCAL FUNCTIONS
 --------------------------------------------------------------------------------
 
@@ -32,12 +39,7 @@ local function activityID(activity)
     return activity and (activity.ID or activity.activityID or activity.perksActivityID)
 end
 
-
---------------------------------------------------------------------------------
--- PUBLIC API
---------------------------------------------------------------------------------
-
-function JournalActivities.getTracked()
+local function getTrackedIDs()
 
     local list = {}
 
@@ -58,7 +60,7 @@ function JournalActivities.getTracked()
 
 end
 
-function JournalActivities.getInfo(id)
+local function getInfo(id)
 
     if not C_PerksActivities then return nil end
 
@@ -79,9 +81,8 @@ function JournalActivities.getInfo(id)
 
 end
 
-function JournalActivities.getObjectives(id)
+local function getObjectives(info)
 
-    local info = JournalActivities.getInfo(id)
     if not info then return {} end
 
     local list = {}
@@ -132,14 +133,12 @@ function JournalActivities.getObjectives(id)
 
 end
 
-function JournalActivities.getProgress(id)
+local function getProgress(info, objectives)
 
-    local info = JournalActivities.getInfo(id)
     if not info then return 0, false end
     if info.completed then return 1, true end
 
-    local objs = JournalActivities.getObjectives(id)
-    if #objs > 0 then return addon.Util.computeProgress(objs) end
+    if #objectives > 0 then return addon.Util.computeProgress(objectives) end
 
     -- Fall back to the activity-level threshold counter (some activities
     -- do not expose objective rows, only an aggregate progress number).
@@ -151,5 +150,85 @@ function JournalActivities.getProgress(id)
     if f > 1 then f = 1 elseif f < 0 then f = 0 end
 
     return f, true
+
+end
+
+local function untrackActivity(id)
+
+    if not C_PerksActivities then return end
+
+    -- Probe API for an explicit untrack/remove function and stop on first
+    -- success, since the exact name varies across game versions.
+    for fname, fn in pairs(C_PerksActivities) do
+        if type(fn) == "function" then
+            local lk = fname:lower()
+            if lk:find("untrack") or (lk:find("remove") and (lk:find("track") or lk:find("activit"))) then
+                local ok = pcall(fn, id)
+                if ok then break end
+            end
+        end
+    end
+
+    -- Also call any SetXxxTracked-style toggle with false, in case the API
+    -- exposes a setter rather than a remove.
+    for fname, fn in pairs(C_PerksActivities) do
+        if type(fn) == "function" then
+            local lk = fname:lower()
+            if lk:find("^set") and lk:find("track") then
+                pcall(fn, id, false)
+            end
+        end
+    end
+
+end
+
+local function buildItem(actID)
+
+    local info = getInfo(actID)
+    if not info then return nil end
+
+    local objectives = getObjectives(info)
+    local progress, hasProgress = getProgress(info, objectives)
+
+    return {
+        kind        = "journalActivity",
+        id          = actID,
+        key         = "activity:" .. actID,
+        title       = info.activityName or info.name or ("Activity " .. actID),
+        section     = SECTION,
+        isComplete  = info.completed and true or false,
+        progress    = progress,
+        hasProgress = hasProgress,
+        objectives  = objectives,
+
+        openDetails = function() addon.BlizzardInterface.openJournalActivities() end,
+        untrack     = function() untrackActivity(actID) end,
+    }
+
+end
+
+
+--------------------------------------------------------------------------------
+-- PUBLIC API
+--------------------------------------------------------------------------------
+
+function JournalActivities.collectAll()
+
+    local items = {}
+
+    for _, actID in ipairs(getTrackedIDs()) do
+        local item = buildItem(actID)
+        if item then table.insert(items, item) end
+    end
+
+    return items
+
+end
+
+function JournalActivities.collect()
+
+    if addon.Core.getDB().filterByZone then return {} end
+
+    return JournalActivities.collectAll()
 
 end
