@@ -23,156 +23,6 @@ local CLASSIFICATION_ORDER = { 2, 0, 4, 5, 1, 6, 9, 7, 3, 10, 8 }
 
 
 --------------------------------------------------------------------------------
--- QUEST DATA
---------------------------------------------------------------------------------
-
-local function SnapshotQuestLog()
-
-    local snapshot, headerName = {}, nil
-    local count = C_QuestLog.GetNumQuestLogEntries() or 0
-
-    for i = 1, count do
-        local info = C_QuestLog.GetInfo(i)
-
-        if info then
-            if info.isHeader then
-                headerName = info.title
-            elseif info.questID and (info.isTask or not info.isHidden) then
-                snapshot[info.questID] = {
-                    campaignID = info.campaignID,
-                    header = headerName,
-                    title = info.title,
-                    questLogIndex = i,
-                    level = info.level,
-                    isComplete = C_QuestLog.IsComplete(info.questID),
-                    isTask = info.isTask,
-                }
-            end
-        end
-    end
-
-    return snapshot
-
-end
-
-local function AddTaskEntry(snapshot, qid, source)
-
-    if not qid or snapshot[qid] then return end
-
-    local title = (C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(qid)) or ("Quest " .. qid)
-
-    snapshot[qid] = {
-        title = title,
-        isComplete = C_QuestLog.IsComplete and C_QuestLog.IsComplete(qid) or false,
-        isTask = true,
-        [source] = true,
-    }
-
-end
-
-local function AddTaskQuestsToSnapshot(snapshot, mapID)
-
-    if C_QuestLog and C_QuestLog.GetNumWorldQuestWatches and C_QuestLog.GetQuestIDForWorldQuestWatchIndex then
-        local ok, n = pcall(C_QuestLog.GetNumWorldQuestWatches)
-
-        if ok and type(n) == "number" then
-            for i = 1, n do
-                local ok2, qid = pcall(C_QuestLog.GetQuestIDForWorldQuestWatchIndex, i)
-                if ok2 then AddTaskEntry(snapshot, qid, "fromWorldWatch") end
-            end
-        end
-    end
-
-    if not mapID then return end
-
-    if C_TaskQuest and C_TaskQuest.GetQuestsForPlayerByMapID then
-        local ok, list = pcall(C_TaskQuest.GetQuestsForPlayerByMapID, mapID)
-
-        if ok and type(list) == "table" then
-            for _, t in ipairs(list) do
-                AddTaskEntry(snapshot, t.questId or t.questID, "fromTaskAPI")
-            end
-        end
-    end
-
-    if C_QuestLog and C_QuestLog.GetQuestsOnMap then
-        local ok, list = pcall(C_QuestLog.GetQuestsOnMap, mapID)
-
-        if ok and type(list) == "table" then
-            for _, t in ipairs(list) do
-                AddTaskEntry(snapshot, t.questID, "fromPOI")
-            end
-        end
-    end
-
-end
-
-local function BuildPOISet(mapID)
-
-    local set = {}
-    if not mapID then return set end
-
-    local quests = C_QuestLog.GetQuestsOnMap(mapID)
-    if quests then
-        for _, q in ipairs(quests) do
-            if q.questID then set[q.questID] = true end
-        end
-    end
-
-    return set
-
-end
-
-local function IsCampaign(info) return info and info.campaignID and info.campaignID > 0 end
-
-local function GetClassification(questID)
-
-    if C_QuestInfoSystem and C_QuestInfoSystem.GetQuestClassification then
-        local v = C_QuestInfoSystem.GetQuestClassification(questID)
-        if v then return v end
-    end
-
-    -- Default to 7 ("Normal") when the API does not classify this quest.
-    return 7
-
-end
-
-
---------------------------------------------------------------------------------
--- QUEST VISIBILITY & PROGRESS
---------------------------------------------------------------------------------
-
-local function GetQuestProgress(questID)
-    return addon.Util.computeProgress(C_QuestLog.GetQuestObjectives(questID))
-end
-
-local function IsQuestWatched(questID)
-
-    if C_QuestLog and C_QuestLog.GetQuestWatchType then
-        local wt = C_QuestLog.GetQuestWatchType(questID)
-        if wt and wt ~= 0 then return true end
-    end
-
-    return false
-
-end
-
-local function ShouldShow(questID, snapshot, poiSet, currentMapID, currentMapName)
-
-    local info = snapshot[questID]
-    if not info then return false end
-    if not IsQuestWatched(questID) then return false end
-
-    if not addon.Core.getDB().filterByZone then return true end
-    if poiSet[questID] then return true end
-    if addon.Core.getDB().alwaysShowCampaign and IsCampaign(info) then return true end
-
-    return false
-
-end
-
-
---------------------------------------------------------------------------------
 -- ACHIEVEMENT DATA
 --------------------------------------------------------------------------------
 
@@ -1170,7 +1020,7 @@ local function SectionForRowKey(key)
 
     if key:sub(1, #KEY_PREFIXES.quest) == KEY_PREFIXES.quest then
         local qid = tonumber(key:sub(#KEY_PREFIXES.quest + 1))
-        if qid then return GetClassification(qid) end
+        if qid then return addon.Data.Quests.getClassification(qid) end
     end
 
     return nil
@@ -1644,16 +1494,16 @@ end
 
 local function BuildQuestGroups(mapID, mapName)
 
-    local snapshot = SnapshotQuestLog()
-    AddTaskQuestsToSnapshot(snapshot, mapID)
-    local poiSet = BuildPOISet(mapID)
+    local snapshot = addon.Data.Quests.snapshot()
+    addon.Data.Quests.addTaskQuests(snapshot, mapID)
+    local poiSet = addon.Data.Quests.buildPOISet(mapID)
 
     local groups = {}
     local total = 0
 
     for qid, info in pairs(snapshot) do
-        if ShouldShow(qid, snapshot, poiSet, mapID, mapName) then
-            local cls = GetClassification(qid)
+        if addon.Data.Quests.shouldShow(qid, snapshot, poiSet, mapID, mapName) then
+            local cls = addon.Data.Quests.getClassification(qid)
             groups[cls] = groups[cls] or {}
             table.insert(groups[cls], {
                 questID = qid,
@@ -1674,7 +1524,7 @@ local function CollectTrackedKeys(snapshot)
     local set = {}
 
     for qid in pairs(snapshot) do
-        if IsQuestWatched(qid) then
+        if addon.Data.Quests.isWatched(qid) then
             set["quest:" .. qid] = true
         end
     end
@@ -1798,7 +1648,7 @@ local function RenderQuestSections(layout, groups, superTracked)
                 end
                 if row.superBg then row.superBg:SetShown(isSuper) end
 
-                local pct, hasObj = GetQuestProgress(q.questID)
+                local pct, hasObj = addon.Data.Quests.getProgress(q.questID)
                 if row.SetProgress then row:SetProgress(pct, hasObj, q.isComplete) end
 
                 return row
