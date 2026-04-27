@@ -339,6 +339,8 @@ local function populateEntry(item)
         if entry.superBg then entry.superBg:Hide() end
     end
 
+    if entry.insideBlobBg then entry.insideBlobBg:SetShown(item.isInsideBlob and true or false) end
+
     return entry
 
 end

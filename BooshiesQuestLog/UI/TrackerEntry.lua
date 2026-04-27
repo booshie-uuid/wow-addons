@@ -42,6 +42,15 @@ TrackerEntry.active = active
 -- plus the flash AnimationGroup and the entry:FlashAttention method.
 local function buildBackgrounds(entry)
 
+    -- Sublevel ordering: insideBlobBg (-3) is the deepest tint so super-track
+    -- gold and completed green layer on top of it without obscuring the blue
+    -- proximity indicator.
+    local insideBlobBg = entry:CreateTexture(nil, "BACKGROUND", nil, -3)
+    insideBlobBg:SetAllPoints(entry)
+    insideBlobBg:SetColorTexture(unpack(addon.UI.Theme.colors.insideBlobBg))
+    insideBlobBg:Hide()
+    entry.insideBlobBg = insideBlobBg
+
     local superBg = entry:CreateTexture(nil, "BACKGROUND", nil, -2)
     superBg:SetAllPoints(entry)
     superBg:SetColorTexture(unpack(addon.UI.Theme.colors.superTrackBg))
@@ -364,6 +373,7 @@ function TrackerEntry.release(entry)
     entry:Hide()
 
     if entry.superBg then entry.superBg:Hide() end
+    if entry.insideBlobBg then entry.insideBlobBg:Hide() end
     if entry.flashAnim then entry.flashAnim:Stop() end
     if entry.flashBg then entry.flashBg:Hide() end
 

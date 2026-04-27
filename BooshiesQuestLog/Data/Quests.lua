@@ -270,6 +270,7 @@ local function buildItem(questID, info, superTrackedID)
         objectives  = objectives,
 
         isSuperTracked = superTrackedID == questID and superTrackedID ~= 0,
+        isInsideBlob   = insideBlobs[questID] and true or false,
 
         openDetails = function() addon.BlizzardInterface.openQuest(questID) end,
         untrack     = function() untrackQuest(questID) end,
