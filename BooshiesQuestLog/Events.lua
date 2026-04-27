@@ -84,11 +84,14 @@ local function dispatch(event, arg1, arg2)
 
     elseif event == "SUPER_TRACKING_CHANGED" then
         -- Update the super-track UI on existing entries immediately for snappy
-        -- feedback, then debounce a full refresh too. Untracking a world quest
-        -- from the map only fires SUPER_TRACKING_CHANGED (no watch-list event),
-        -- so this is also our cue to re-snapshot the watch list and let any
-        -- WQ that Blizzard removed disappear from the tracker.
+        -- feedback, mark the new super-tracked quest as something to surface
+        -- on the next refresh (expand / uncollapse / scroll / flash), then
+        -- debounce a refresh. Untracking a world quest from the map only
+        -- fires SUPER_TRACKING_CHANGED (no watch-list event), so the refresh
+        -- here is also our cue to re-snapshot the watch list and drop any
+        -- WQ Blizzard removed.
         addon.BooshiesTracker.updateSuperTrack()
+        addon.BooshiesTracker.surfaceSuperTracked()
         reschedule()
 
     elseif event == "PLAYER_INSIDE_QUEST_BLOB_STATE_CHANGED" then

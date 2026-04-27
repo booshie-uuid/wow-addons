@@ -618,3 +618,25 @@ function BooshiesTracker.updateSuperTrack()
     end
 
 end
+
+-- Ensure the currently super-tracked quest is visible: expanded, in an
+-- uncollapsed section, scrolled into view, and briefly flashed. Reuses the
+-- newly-tracked flow (pendingFlashKeys drives uncollapse + scroll + flash)
+-- so super-track-from-map gets the same treatment as a fresh track. Zone
+-- filter still wins — if the quest is filtered out it just won't appear,
+-- and these flags will apply the next time it's visible.
+function BooshiesTracker.surfaceSuperTracked()
+
+    local current = C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID and C_SuperTrack.GetSuperTrackedQuestID() or 0
+    if current == 0 then return end
+
+    local key = "quest:" .. current
+
+    addon.Core.getDB().expandedKeys = addon.Core.getDB().expandedKeys or {}
+    addon.Core.getDB().expandedKeys[key] = true
+
+    pendingFlashKeys[key] = true
+    pendingScrollKey = key
+    pendingScrollExpiresAt = GetTime() + SCROLL_PIN_WINDOW
+
+end
