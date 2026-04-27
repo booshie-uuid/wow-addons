@@ -45,21 +45,41 @@ Quests.SECTION_ORDER = {
 
 
 --------------------------------------------------------------------------------
+-- LOCAL STATE
+--------------------------------------------------------------------------------
+
+-- Set of questIDs the player is currently inside the active-area blob of.
+-- Populated by PLAYER_INSIDE_QUEST_BLOB_STATE_CHANGED (see Events.lua) and
+-- read by shouldShow as a definitive proximity signal — much sharper than
+-- inferring proximity from "task quest in local log AND on current map".
+local insideBlobs = {}
+
+
+--------------------------------------------------------------------------------
 -- LOCAL FUNCTIONS
 --------------------------------------------------------------------------------
 
 local function addTaskEntry(snapshot, qid, source)
 
-    if not qid or snapshot[qid] then return end
+    if not qid then return end
 
-    local title = (C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(qid)) or ("Quest " .. qid)
+    if not snapshot[qid] then
+        local title = (C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(qid)) or ("Quest " .. qid)
 
-    snapshot[qid] = {
-        title = title,
-        isComplete = C_QuestLog.IsComplete and C_QuestLog.IsComplete(qid) or false,
-        isTask = true,
-        [source] = true,
-    }
+        snapshot[qid] = {
+            title = title,
+            isComplete = C_QuestLog.IsComplete and C_QuestLog.IsComplete(qid) or false,
+            isTask = true,
+        }
+    end
+
+    -- Set the source flag whether the entry is new or already present, so a
+    -- watched quest that also showed up in the regular quest-log iteration
+    -- still gets its watch-list provenance recorded. Otherwise the entry
+    -- created in step 1 would block the fromWatch flag from being set in
+    -- step 3, and isWatched would fall back to the unreliable
+    -- GetQuestWatchType path (which returns 0/nil for in-vicinity WQs).
+    snapshot[qid][source] = true
 
 end
 
@@ -99,6 +119,22 @@ local function buildSnapshot(mapID)
             for i = 1, n do
                 local ok2, qid = pcall(C_QuestLog.GetQuestIDForWorldQuestWatchIndex, i)
                 if ok2 then addTaskEntry(snapshot, qid, "fromWorldWatch") end
+            end
+        end
+    end
+
+    -- Click-tracking a world quest from another zone fires QUEST_WATCH_LIST_CHANGED
+    -- (not WORLD_QUEST_WATCH_LIST_CHANGED), meaning Blizzard adds it to the regular
+    -- quest watch list rather than the WQ-specific one. The regular log iteration
+    -- above only picks up quests with local data, so cross-zone WQs need a second
+    -- pass over the regular watch list.
+    if C_QuestLog and C_QuestLog.GetNumQuestWatches and C_QuestLog.GetQuestIDForQuestWatchIndex then
+        local ok, n = pcall(C_QuestLog.GetNumQuestWatches)
+
+        if ok and type(n) == "number" then
+            for i = 1, n do
+                local ok2, qid = pcall(C_QuestLog.GetQuestIDForQuestWatchIndex, i)
+                if ok2 then addTaskEntry(snapshot, qid, "fromWatch") end
             end
         end
     end
@@ -158,7 +194,15 @@ local function getClassification(questID)
 
 end
 
-local function isWatched(questID)
+-- A quest is watched if it came from one of the watch-list iterations in
+-- buildSnapshot, OR if GetQuestWatchType reports a non-zero watch. The
+-- watch-list signal is authoritative: GetQuestWatchType has been seen to
+-- return 0/nil for click-tracked world quests whose data hasn't fully
+-- loaded into the local quest log yet, even though the quest IS in the
+-- watch list as far as Blizzard is concerned.
+local function isWatched(questID, info)
+
+    if info and (info.fromWorldWatch or info.fromWatch) then return true end
 
     if C_QuestLog and C_QuestLog.GetQuestWatchType then
         local wt = C_QuestLog.GetQuestWatchType(questID)
@@ -173,7 +217,19 @@ local function shouldShow(questID, snapshot, poiSet)
 
     local info = snapshot[questID]
     if not info then return false end
-    if not isWatched(questID) then return false end
+
+    -- Definitive proximity signal: PLAYER_INSIDE_QUEST_BLOB_STATE_CHANGED
+    -- told us the player is literally inside this quest's active area.
+    -- Always show, regardless of zone filter or watch state.
+    if insideBlobs[questID] then return true end
+
+    -- Fallback for area-trigger WQs in cases where the blob event hasn't
+    -- fired (or has been missed): a task quest sitting in the regular
+    -- quest log on the current map is almost certainly one the player
+    -- just walked into.
+    local autoActiveTask = info.isTask and info.questLogIndex and poiSet[questID]
+
+    if not isWatched(questID, info) and not autoActiveTask then return false end
 
     local db = addon.Core.getDB()
 
@@ -236,7 +292,7 @@ function Quests.collectAll()
     local items = {}
 
     for qid, info in pairs(snapshot) do
-        if isWatched(qid) then
+        if isWatched(qid, info) then
             table.insert(items, buildItem(qid, info, superTrackedID))
         end
     end
@@ -261,5 +317,13 @@ function Quests.collect()
     end
 
     return items
+
+end
+
+function Quests.setInsideBlob(questID, isInside)
+
+    if not questID then return end
+
+    insideBlobs[questID] = isInside and true or nil
 
 end

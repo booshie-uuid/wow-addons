@@ -38,6 +38,7 @@ local OPTIONAL_EVENTS = {
     "PERKS_ACTIVITY_COMPLETED",
     "INITIATIVE_TASKS_TRACKED_LIST_CHANGED",
     "INITIATIVE_ACTIVITY_LOG_UPDATED",
+    "PLAYER_INSIDE_QUEST_BLOB_STATE_CHANGED",
 }
 
 
@@ -65,7 +66,7 @@ local function reschedule()
 
 end
 
-local function dispatch(event, arg1)
+local function dispatch(event, arg1, arg2)
 
     if event == "PLAYER_LOGIN" then
         addon.BooshiesTracker.init()
@@ -82,7 +83,21 @@ local function dispatch(event, arg1)
         if arg1 == "player" then reschedule() end
 
     elseif event == "SUPER_TRACKING_CHANGED" then
+        -- Update the super-track UI on existing entries immediately for snappy
+        -- feedback, then debounce a full refresh too. Untracking a world quest
+        -- from the map only fires SUPER_TRACKING_CHANGED (no watch-list event),
+        -- so this is also our cue to re-snapshot the watch list and let any
+        -- WQ that Blizzard removed disappear from the tracker.
         addon.BooshiesTracker.updateSuperTrack()
+        reschedule()
+
+    elseif event == "PLAYER_INSIDE_QUEST_BLOB_STATE_CHANGED" then
+        -- arg1 = questID, arg2 = isInside. Definitive proximity signal —
+        -- when the player crosses into a quest's active area we want that
+        -- quest to surface immediately, without waiting for the slower
+        -- QUEST_DATA_LOAD_RESULT cascade to populate the local quest log.
+        addon.Data.Quests.setInsideBlob(arg1, arg2)
+        reschedule()
 
     else
         reschedule()
@@ -100,9 +115,9 @@ local frame = CreateFrame("Frame")
 for _, e in ipairs(REQUIRED_EVENTS) do frame:RegisterEvent(e) end
 for _, e in ipairs(OPTIONAL_EVENTS) do pcall(frame.RegisterEvent, frame, e) end
 
-frame:SetScript("OnEvent", function(self, event, arg1)
+frame:SetScript("OnEvent", function(self, event, arg1, arg2)
     addon.Util.safeCall("OnEvent:" .. tostring(event), function()
-        dispatch(event, arg1)
+        dispatch(event, arg1, arg2)
     end)
 end)
 
