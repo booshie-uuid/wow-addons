@@ -16,6 +16,7 @@ local DEFAULTS = {
     alwaysShowCampaign     = true,
     alwaysShowAchievements = true,
     debug                  = false,
+    trace                  = false,
     hideBlizzardTracker    = true,
     point                  = { "TOPRIGHT", "UIParent", "TOPRIGHT", -20, -200 },
     width                  = 280,
@@ -201,8 +202,12 @@ SlashCmdList["BOOSHIESQUESTLOG"] = function(msg)
     elseif msg == "refresh" then
         addon.BooshiesTracker.refresh()
 
+    elseif msg == "trace" then
+        addon.Core.getDB().trace = not addon.Core.getDB().trace
+        printStatus("trace", addon.Core.getDB().trace)
+
     else
-        print("|cff4fc3f7BQL:|r /bql [toggle||reset||refresh]")
+        print("|cff4fc3f7BQL:|r /bql [toggle||reset||refresh||trace]")
     end
 
 end

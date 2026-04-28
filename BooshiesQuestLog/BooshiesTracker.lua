@@ -11,13 +11,6 @@ addon.BooshiesTracker = BooshiesTracker
 local ROW_HEIGHT = addon.UI.TrackerEntry.ROW_HEIGHT
 local ROW_GAP    = addon.UI.TrackerEntry.ROW_GAP
 
--- After an entry click, debounced WoW events (QUEST_LOG_UPDATE, BAG_UPDATE_DELAYED,
--- etc.) often trigger another refresh ~50ms later, and the second layout pass
--- can shift content slightly (lazy text measurement, scrollbar appear/disappear).
--- We pin the click target by key for a short window and re-apply scrollIntoView
--- at the end of each refresh within that window.
-local SCROLL_PIN_WINDOW = 0.3
-
 -- Render order for sections. Composed from each Data module's quest-classification
 -- order (currently only Quests has internal grouping) plus the singular section
 -- each non-quest module produces.
@@ -50,9 +43,21 @@ buildSectionOrder()
 local window
 local frame, titleText, zoneText, content, scrollFrame
 
-local pendingScrollKey, pendingScrollExpiresAt
+-- Single-use scroll target consumed by applyPendingScroll on the next refresh.
+local pendingScrollKey
 local previousTrackedKeys
 local pendingFlashKeys = {}
+
+
+--------------------------------------------------------------------------------
+-- DEBUG TRACING
+--------------------------------------------------------------------------------
+
+-- Toggled by /bql trace.
+local function trace(fmt, ...)
+    if not addon.Core.getDB().trace then return end
+    print(("|cffaaaaffBQL trace:|r " .. fmt):format(...))
+end
 
 
 --------------------------------------------------------------------------------
@@ -65,7 +70,14 @@ local DATA_MODULES = {
 
 -- LAYOUT & SCROLL --------------------------------------------------------------
 
-local function relayoutLayout(layout)
+-- Pass skipChrome=true to position items WITHOUT touching content height,
+-- frame size, scrollbar visibility, or content width. The preliminary
+-- layout pass before objective expansion needs item positions but using
+-- the (still-collapsed) item heights to set content:SetHeight would let
+-- WoW's ScrollFrame clamp the user's scroll value to a transient smaller
+-- max range, snapping the view away from where they had it. The final
+-- relayoutLayout (after objectives expand) does the chrome work once.
+local function relayoutLayout(layout, skipChrome)
 
     layout = layout or {}
 
@@ -100,7 +112,12 @@ local function relayoutLayout(layout)
         y = y + item:GetHeight() + trailingGap
     end
 
+    if skipChrome then return end
+
     local contentHeight = math.max(y - trailingGap, 1)
+    local scrollBefore = scrollFrame:GetVerticalScroll() or 0
+    trace("relayoutLayout: contentHeight=%.1f scrollBefore=%.1f", contentHeight, scrollBefore)
+
     content:SetHeight(contentHeight)
 
     local maxH = addon.Core.getDB().maxHeight or 300
@@ -122,7 +139,10 @@ local function relayoutLayout(layout)
             scrollFrame._bqlForceHidden = true
             bar:Hide()
             scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -8, window.bottomPad)
-            if scrollFrame.SetVerticalScroll then scrollFrame:SetVerticalScroll(0) end
+            if scrollFrame.SetVerticalScroll then
+                trace("relayoutLayout: bar hidden, resetting scroll to 0")
+                scrollFrame:SetVerticalScroll(0)
+            end
         end
     end
 
@@ -131,6 +151,11 @@ local function relayoutLayout(layout)
     content:SetWidth(math.max(contentWidth, 1))
 
     if scrollFrame.UpdateScrollChildRect then scrollFrame:UpdateScrollChildRect() end
+
+    local scrollAfter = scrollFrame:GetVerticalScroll() or 0
+    if math.abs(scrollAfter - scrollBefore) > 0.5 then
+        trace("relayoutLayout: scroll changed %.1f -> %.1f (max=%.1f)", scrollBefore, scrollAfter, scrollFrame:GetVerticalScrollRange() or -1)
+    end
 
 end
 
@@ -233,8 +258,8 @@ end
 local function detectAndShowNewlyTracked(currentKeys)
 
     if not previousTrackedKeys then
-        -- First refresh after load. Capture the baseline silently so we do
-        -- not fire for every already-tracked item.
+        -- First refresh after load: silently baseline so we don't flag every
+        -- already-tracked item as new.
         previousTrackedKeys = currentKeys
         return
     end
@@ -249,23 +274,14 @@ local function detectAndShowNewlyTracked(currentKeys)
             -- Mark expanded even if the zone filter is currently hiding this
             -- item, so it appears expanded next time it becomes visible.
             db.expandedKeys[key] = true
-
-            -- We do not know which section this key belongs to without
-            -- iterating the collected items, but the next render pass will
-            -- naturally ensure its section is uncollapsed via a scan. To keep
-            -- the previous behaviour (uncollapse the receiving section) we
-            -- need the item itself; defer that to applyNewlyTrackedSections
-            -- once we have visible items in hand.
             pendingFlashKeys[key] = true
             lastNewKey = key
+            trace("detectAndShowNewlyTracked: new key %s", key)
         end
     end
 
-    -- Hidden-by-filter items have no matching entry in active, so the
-    -- pending-scroll naturally no-ops for them.
     if lastNewKey then
         pendingScrollKey = lastNewKey
-        pendingScrollExpiresAt = GetTime() + SCROLL_PIN_WINDOW
     end
 
     previousTrackedKeys = currentKeys
@@ -363,9 +379,13 @@ local function applyExpansionState(layout)
     local expandedKeys = addon.Core.getDB().expandedKeys or {}
     if not next(expandedKeys) then return end
 
-    -- First layout pass so ObjectivePanel.expand has resolved frame positions
-    -- to measure from before it computes objective wraps and final row heights.
-    relayoutLayout(layout)
+    -- Position items so ObjectivePanel.expand has resolved frame positions
+    -- to measure from. Skip the chrome work — entry heights are still the
+    -- collapsed values at this point and updating content:SetHeight here
+    -- would shrink the scroll-range max enough that WoW clamps the user's
+    -- scroll position downward; the regrowth in the final relayoutLayout
+    -- doesn't restore it. The final pass after expansion handles chrome.
+    relayoutLayout(layout, true)
 
     for _, entry in ipairs(addon.UI.TrackerEntry.active) do
         if entry.item and expandedKeys[entry.item.key] then
@@ -378,11 +398,6 @@ end
 local function applyPendingScroll()
 
     if not pendingScrollKey then return end
-
-    if pendingScrollExpiresAt and GetTime() > pendingScrollExpiresAt then
-        pendingScrollKey, pendingScrollExpiresAt = nil, nil
-        return
-    end
 
     local target
 
@@ -402,7 +417,15 @@ local function applyPendingScroll()
         end
     end
 
-    if target then scrollIntoView(target) end
+    if target then
+        trace("applyPendingScroll: snapping to %s", pendingScrollKey)
+        scrollIntoView(target)
+    else
+        trace("applyPendingScroll: target %s not in active list, no-op", pendingScrollKey)
+    end
+
+    -- Pins are single-use; if you want one applied again, set it again.
+    pendingScrollKey = nil
 
 end
 
@@ -429,6 +452,10 @@ local function refreshUI()
     if not frame then return end
     if not addon.Core.getDB().enabled then frame:Hide(); return end
     if addon.UI.SettingsWindow.isShown() then return end
+
+    trace("---- refreshUI start, scroll=%.1f pinKey=%s ----",
+        (scrollFrame and scrollFrame:GetVerticalScroll()) or -1,
+        tostring(pendingScrollKey))
 
     frame:Show()
 
@@ -516,8 +543,14 @@ function BooshiesTracker.init()
     content     = window.content
     scrollFrame = window.scrollFrame
 
+    -- Universal trace of every scroll value change, regardless of source.
+    scrollFrame:HookScript("OnVerticalScroll", function(self, value)
+        trace("OnVerticalScroll: %.1f (max=%.1f)", value or -1, self:GetVerticalScrollRange() or -1)
+    end)
+
     addon.UI.TrackerEntry.init({
         content   = window.content,
+        onPin     = BooshiesTracker.pinEntry,
         onClick   = BooshiesTracker.handleEntryClick,
         onRelease = addon.UI.ObjectivePanel.collapse,
     })
@@ -549,6 +582,16 @@ function BooshiesTracker.refresh()
     addon.Util.safeCall("Refresh", refreshUI)
 end
 
+-- Pin the next refresh's scroll position to a specific entry.
+function BooshiesTracker.pinEntry(entry)
+
+    if not entry or not entry.item then return end
+
+    trace("pinEntry: %s", entry.item.key)
+    pendingScrollKey = entry.item.key
+
+end
+
 function BooshiesTracker.handleEntryClick(entry)
 
     local item = entry.item
@@ -561,8 +604,8 @@ function BooshiesTracker.handleEntryClick(entry)
         addon.Core.getDB().expandedKeys[item.key] = true
     end
 
+    trace("handleEntryClick: %s", item.key)
     pendingScrollKey = item.key
-    pendingScrollExpiresAt = GetTime() + SCROLL_PIN_WINDOW
 
     BooshiesTracker.refresh()
 
@@ -576,8 +619,8 @@ function BooshiesTracker.handleSectionClick(header)
     addon.Core.getDB().collapsedSections = addon.Core.getDB().collapsedSections or {}
     addon.Core.getDB().collapsedSections[sectionName] = not addon.Core.getDB().collapsedSections[sectionName]
 
+    trace("handleSectionClick: %s", header.key)
     pendingScrollKey = header.key
-    pendingScrollExpiresAt = GetTime() + SCROLL_PIN_WINDOW
 
     BooshiesTracker.refresh()
 
@@ -619,12 +662,8 @@ function BooshiesTracker.updateSuperTrack()
 
 end
 
--- Ensure the currently super-tracked quest is visible: expanded, in an
--- uncollapsed section, scrolled into view, and briefly flashed. Reuses the
--- newly-tracked flow (pendingFlashKeys drives uncollapse + scroll + flash)
--- so super-track-from-map gets the same treatment as a fresh track. Zone
--- filter still wins — if the quest is filtered out it just won't appear,
--- and these flags will apply the next time it's visible.
+-- Surface the currently super-tracked quest: expanded, in an uncollapsed
+-- section, scrolled into view, briefly flashed.
 function BooshiesTracker.surfaceSuperTracked()
 
     local current = C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID and C_SuperTrack.GetSuperTrackedQuestID() or 0
@@ -637,6 +676,5 @@ function BooshiesTracker.surfaceSuperTracked()
 
     pendingFlashKeys[key] = true
     pendingScrollKey = key
-    pendingScrollExpiresAt = GetTime() + SCROLL_PIN_WINDOW
 
 end

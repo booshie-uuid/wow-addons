@@ -121,7 +121,12 @@ end
 
 local function buildItem(achID)
 
-    local _, name, _, completed = GetAchievementInfo and GetAchievementInfo(achID)
+    if not GetAchievementInfo then return nil end
+
+    -- Lua gotcha: `X and X(achID)` truncates the multi-return to a single
+    -- value, leaving name/completed nil. Guard with an early return so the
+    -- destructure can call GetAchievementInfo directly.
+    local _, name, _, completed = GetAchievementInfo(achID)
     if not name then return nil end
 
     local objectives = getCriteria(achID)

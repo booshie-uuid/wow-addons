@@ -289,6 +289,13 @@ local function wireClick(entry)
         local item = entry.item
         if not item then return end
 
+        -- Pin scroll to this entry across the post-click refresh, regardless
+        -- of which click variant fires. Side-effects (opening Blizzard
+        -- windows, untracking, super-track changes) all trigger refreshes
+        -- whose layout passes can otherwise drift the visible region away
+        -- from the row the user just clicked.
+        if config.onPin then config.onPin(entry) end
+
         -- Ctrl+Left: super-track this quest.
         if IsControlKeyDown() and button == "LeftButton" then
             if item.kind == "quest" and C_SuperTrack then

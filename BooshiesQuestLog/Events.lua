@@ -83,22 +83,15 @@ local function dispatch(event, arg1, arg2)
         if arg1 == "player" then reschedule() end
 
     elseif event == "SUPER_TRACKING_CHANGED" then
-        -- Update the super-track UI on existing entries immediately for snappy
-        -- feedback, mark the new super-tracked quest as something to surface
-        -- on the next refresh (expand / uncollapse / scroll / flash), then
-        -- debounce a refresh. Untracking a world quest from the map only
-        -- fires SUPER_TRACKING_CHANGED (no watch-list event), so the refresh
-        -- here is also our cue to re-snapshot the watch list and drop any
-        -- WQ Blizzard removed.
+        -- Untracking a WQ from the map fires only this event (no watch-list
+        -- event), so the refresh is also how we pick up the resulting
+        -- watch-list change.
         addon.BooshiesTracker.updateSuperTrack()
         addon.BooshiesTracker.surfaceSuperTracked()
         reschedule()
 
     elseif event == "PLAYER_INSIDE_QUEST_BLOB_STATE_CHANGED" then
-        -- arg1 = questID, arg2 = isInside. Definitive proximity signal —
-        -- when the player crosses into a quest's active area we want that
-        -- quest to surface immediately, without waiting for the slower
-        -- QUEST_DATA_LOAD_RESULT cascade to populate the local quest log.
+        -- arg1 = questID, arg2 = isInside.
         addon.Data.Quests.setInsideBlob(arg1, arg2)
         reschedule()
 
