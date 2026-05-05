@@ -260,10 +260,21 @@ local function buildTitle(entry)
     title:SetWordWrap(false)
     entry.title = title
 
-    function entry:SetComplete(flag)
+    function entry:SetComplete(flag, isAutoComplete)
         flag = flag and true or false
+        isAutoComplete = (flag and isAutoComplete) and true or false
+
         self.completeBg:SetShown(flag)
         self.completionIcon:SetShown(flag)
+
+        if isAutoComplete then
+            self.completeBg:SetColorTexture(unpack(addon.UI.Theme.colors.autoCompleteBg))
+            self.completionIcon:SetTexture(addon.UI.Theme.textures.autoCompleteIcon)
+        else
+            self.completeBg:SetColorTexture(unpack(addon.UI.Theme.colors.completedBg))
+            self.completionIcon:SetTexture(addon.UI.Theme.textures.checkmark)
+        end
+
         self.title:ClearAllPoints()
         self.title:SetPoint("LEFT", self.arrow, "RIGHT", 4, 0)
         if flag then

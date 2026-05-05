@@ -8,6 +8,16 @@ addon.BlizzardInterface = BlizzardInterface
 -- PUBLIC API
 --------------------------------------------------------------------------------
 
+function BlizzardInterface.completeAutoQuest(questID)
+
+    if not questID then return end
+
+    if _G.ShowQuestComplete then
+        pcall(_G.ShowQuestComplete, questID)
+    end
+
+end
+
 function BlizzardInterface.openQuest(questID)
 
     if not questID then return end

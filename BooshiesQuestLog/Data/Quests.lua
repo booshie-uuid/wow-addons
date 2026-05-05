@@ -107,6 +107,7 @@ local function buildSnapshot(mapID)
                     level = info.level,
                     isComplete = C_QuestLog.IsComplete(info.questID),
                     isTask = info.isTask,
+                    isAutoComplete = info.isAutoComplete,
                 }
             end
         end
@@ -271,8 +272,20 @@ local function buildItem(questID, info, superTrackedID)
 
         isSuperTracked = superTrackedID == questID and superTrackedID ~= 0,
         isInsideBlob   = insideBlobs[questID] and true or false,
+        isAutoComplete = info.isAutoComplete and true or false,
 
-        openDetails = function() addon.BlizzardInterface.openQuest(questID) end,
+        -- Auto-complete quests get a different right-click target: rather than
+        -- opening the quest map, surface Blizzard's completion dialog so the
+        -- player can hand the quest in without finding an NPC. Re-check
+        -- IsComplete at click time so a quest that just became completable
+        -- (between refreshes) still dispatches correctly.
+        openDetails = function()
+            if info.isAutoComplete and C_QuestLog.IsComplete(questID) then
+                addon.BlizzardInterface.completeAutoQuest(questID)
+            else
+                addon.BlizzardInterface.openQuest(questID)
+            end
+        end,
         untrack     = function() untrackQuest(questID) end,
         dump        = function() addon.Debug.dumpQuest(questID) end,
     }

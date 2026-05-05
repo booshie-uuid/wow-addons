@@ -11,11 +11,12 @@ addon.UI.Theme = Theme
 --------------------------------------------------------------------------------
 
 Theme.textures = {
-    plusButton  = "Interface\\Buttons\\UI-PlusButton-Up",
-    minusButton = "Interface\\Buttons\\UI-MinusButton-Up",
-    checkmark   = "Interface\\RAIDFRAME\\ReadyCheck-Ready",
-    radioButton = "Interface\\Buttons\\UI-RadioButton",
-    cog         = "Interface\\Buttons\\UI-OptionsButton",
+    plusButton       = "Interface\\Buttons\\UI-PlusButton-Up",
+    minusButton      = "Interface\\Buttons\\UI-MinusButton-Up",
+    checkmark        = "Interface\\RAIDFRAME\\ReadyCheck-Ready",
+    autoCompleteIcon = "Interface\\GossipFrame\\ActiveQuestIcon",
+    radioButton      = "Interface\\Buttons\\UI-RadioButton",
+    cog              = "Interface\\Buttons\\UI-OptionsButton",
 }
 
 
@@ -28,6 +29,7 @@ Theme.colors = {
     -- Row Backgrounds
     superTrackBg     = { 1.0,  0.82, 0.0,  0.12 },
     completedBg      = { 0.12, 0.35, 0.15, 0.45 },
+    autoCompleteBg   = { 1.0,  0.82, 0.0,  0.30 },
     insideBlobBg     = { 0.25, 0.55, 1.0,  0.18 },
     flashHighlight   = { 1.0,  0.85, 0.3,  0.6  },
 

@@ -17,6 +17,7 @@ local REQUIRED_EVENTS = {
     "QUEST_WATCH_LIST_CHANGED",
     "QUEST_ACCEPTED",
     "QUEST_REMOVED",
+    "QUEST_AUTOCOMPLETE",
     "UNIT_QUEST_LOG_CHANGED",
     "SUPER_TRACKING_CHANGED",
 }
@@ -81,6 +82,10 @@ local function dispatch(event, arg1, arg2)
 
     elseif event == "UNIT_QUEST_LOG_CHANGED" then
         if arg1 == "player" then reschedule() end
+
+    elseif event == "QUEST_AUTOCOMPLETE" then
+        addon.BooshiesTracker.surfaceAutoComplete(arg1)
+        reschedule()
 
     elseif event == "SUPER_TRACKING_CHANGED" then
         -- Untracking a WQ from the map fires only this event (no watch-list

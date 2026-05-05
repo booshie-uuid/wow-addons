@@ -341,7 +341,7 @@ local function populateEntry(item)
     entry.title:SetText(item.title)
     entry.title:SetTextColor(unpack(addon.UI.Theme.colors.itemTitle))
 
-    if entry.SetComplete then entry:SetComplete(item.isComplete) end
+    if entry.SetComplete then entry:SetComplete(item.isComplete, item.isAutoComplete) end
     if entry.SetProgress then entry:SetProgress(item.progress, item.hasProgress, item.isComplete) end
 
     if item.kind == "quest" then
@@ -659,6 +659,24 @@ function BooshiesTracker.updateSuperTrack()
             item.isSuperTracked = isSuper and true or false
         end
     end
+
+end
+
+-- Surface a quest that just became auto-completable: expanded, in an
+-- uncollapsed section, scrolled into view, briefly flashed. Driven by
+-- QUEST_AUTOCOMPLETE so the player notices an actionable quest even when
+-- it's been collapsed or scrolled out of view.
+function BooshiesTracker.surfaceAutoComplete(questID)
+
+    if not questID then return end
+
+    local key = "quest:" .. questID
+
+    addon.Core.getDB().expandedKeys = addon.Core.getDB().expandedKeys or {}
+    addon.Core.getDB().expandedKeys[key] = true
+
+    pendingFlashKeys[key] = true
+    pendingScrollKey = key
 
 end
 
